@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: cd smartbin && python bot.py
+    startCommand: bash -c "cd smartbin && python bot.py"
     envVars:
       - key: PYTHON_VERSION
         value: 3.14.10
