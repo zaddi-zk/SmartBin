@@ -43,26 +43,9 @@ async def bin_cmd(
             )
             return
         # Show first result
-        await perform_bin_lookup(message, runtime, rows[0]["bin"], free=True)
+        await perform_bin_lookup(message, runtime, rows[0]["bin"])
         return
     # 6 or 8 digit BIN
-    await perform_bin_lookup(message, runtime, arg, free=True)
-            await message.answer(
-                "No matching BINs in cache. Send 6 or 8 digits.",
-                reply_markup=ui.cancel_kb(),
-            )
-            return
-        lines = [
-            f"{row['bin']}  {row['brand']:<10} {row['level']:<10} "
-            f"{row['bank'][:28]:<28} {row['country']}"
-            for row in rows
-        ]
-        await message.answer(
-            "<pre>" + "\n".join(lines) + "</pre>",
-            parse_mode="HTML",
-            reply_markup=ui.menu_only_kb(),
-        )
-        return
     await perform_bin_lookup(message, runtime, arg)
 
 
