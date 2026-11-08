@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: SmartBin
+    env: python
+    region: oregon
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: cd smartbin && python bot.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.10
+      - key: BOT_TOKEN
+        sync: false
+      - key: DB_PATH
+        value: /home/render/smartbin.db
+      - key: MINIAPP_PORT
+        value: "8080"
+      - key: STRIPE_TEST_MODE
+        value: "1"
+      - key: FREE_BINS_PER_DAY
+        value: "10"
+      - key: FREE_CHECKS_PER_DAY
+        value: "3"
+      - key: LOG_LEVEL
+        value: INFO
+    disk:
+      name: smartbin-data
+      mountPath: /home/render
+      sizeGB: 1
