@@ -148,6 +148,14 @@ def create_app(runtime: Any) -> web.Application:
             return web.json_response({"error": "unauthorized"}, status=401)
         return web.json_response(await status_json(runtime))
 
+    async def api_reflink(request: web.Request) -> web.Response:
+        if verify_init_data(_init_data(request), runtime.config.bot_token) is None:
+            return web.json_response({"error": "unauthorized"}, status=401)
+        user_id = request.query.get("user_id", "")
+        bot_username = (await runtime.bot.get_me()).username
+        ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}" if user_id else ""
+        return web.json_response({"ref_link": ref_link})
+
     async def health(request: web.Request) -> web.Response:
         return web.json_response({"ok": True, "version": DISPLAY_VERSION, "time": utcnow_iso()})
 
@@ -155,6 +163,7 @@ def create_app(runtime: Any) -> web.Application:
     app.router.add_get("/api/bin", api_bin)
     app.router.add_get("/api/status", api_status)
     app.router.add_post("/api/status", api_status)
+    app.router.add_get("/api/reflink", api_reflink)
     app.router.add_get("/api/health", health)
     return app
 

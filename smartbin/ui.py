@@ -36,12 +36,12 @@ BTN_BULK = "📦 Bulk / CSV"
 BTN_STATUS = "📊 Status"
 BTN_FIX = "🐞 Fix Record"
 BTN_PREMIUM = "🔒 Premium"
-BTN_PLAY = "🎲 Play"
+BTN_REFER = "👥 Refer"
 BTN_ADMIN = "🎛 Admin Panel"
 
 BUTTON_LABELS = {
     BTN_BIN, BTN_CHECK, BTN_BULK, BTN_STATUS,
-    BTN_FIX, BTN_PREMIUM, BTN_PLAY, BTN_ADMIN,
+    BTN_FIX, BTN_PREMIUM, BTN_REFER, BTN_ADMIN,
 }
 
 
@@ -64,7 +64,7 @@ def main_menu(admin: bool, miniapp_url: str = "") -> ReplyKeyboardMarkup:
         [KeyboardButton(text=BTN_BULK), KeyboardButton(text=BTN_STATUS)],
         [KeyboardButton(text=BTN_FIX), KeyboardButton(text=BTN_PREMIUM)],
     ]
-    last = [KeyboardButton(text=BTN_PLAY)]
+    last = [KeyboardButton(text=BTN_REFER)]
     if admin:
         last.append(KeyboardButton(text=BTN_ADMIN))
     rows.append(last)
@@ -81,7 +81,7 @@ def dashboard_kb(admin: bool, miniapp_url: str = "") -> InlineKeyboardMarkup:
         [_btn("🃏 BIN Lookup", "flow:bin"), _btn("⚡ Live Check", "flow:check")],
         [_btn("📦 Bulk / CSV", "flow:bulk"), _btn("📊 Status", "flow:status")],
         [_btn("🐞 Fix Record", "flow:fix"), _btn("🔒 Premium", "flow:premium")],
-        [_btn("🎲 Play", "flow:play")],
+        [_btn("👥 Refer", "flow:refer")],
     ]
     if admin:
         rows[-1].append(_btn("🎛 Admin", "flow:admin"))

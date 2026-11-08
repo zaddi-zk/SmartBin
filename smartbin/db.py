@@ -321,6 +321,19 @@ class DB:
         assert row is not None
         return row
 
+    async def grant_referral_bonus(self, referee_id: int, referrer_id: int) -> None:
+        """Grant 5 free checks to both referrer and referee."""
+        # Grant to referee (new user)
+        await self.execute(
+            "UPDATE users SET free_check=free_check+5 WHERE user_id=?",
+            (referee_id,),
+        )
+        # Grant to referrer (existing user)
+        await self.execute(
+            "UPDATE users SET free_check=free_check+5 WHERE user_id=?",
+            (referrer_id,),
+        )
+
     async def update_user(self, user_id: int, **fields: Any) -> None:
         if not fields:
             return

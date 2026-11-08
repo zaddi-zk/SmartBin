@@ -76,6 +76,7 @@
   .up{color:var(--success)} .down{color:var(--danger)}
   footer{color:var(--dim);font-size:11px;text-align:center;margin-top:20px;letter-spacing:.5px}
   .hidden{display:none}
+  .ref-link{word-break:break-all}
 </style>
 </head>
 <body>
@@ -85,7 +86,7 @@
       <div class="avatar">SB</div>
       <div>
         <div class="brand">SMARTBIN</div>
-        <div class="sub">card intelligence · v1.0.0</div>
+        <div class="sub">card intelligence · v7.1.0</div>
       </div>
     </div>
     <div style="display:flex;align-items:center;gap:8px;color:var(--dim);font-size:11px;letter-spacing:1px">
@@ -97,6 +98,7 @@
   <div class="tabs">
     <div class="tab active" data-screen="lookup">LOOKUP</div>
     <div class="tab" data-screen="status">STATUS</div>
+    <div class="tab" data-screen="refer">REFER</div>
   </div>
 
   <section id="screen-lookup" class="panel">
@@ -107,7 +109,7 @@
       </div>
       <button id="go">Lookup</button>
     </div>
-    <div class="hint">Cache-first. Unsourced fields render UNKNOWN. Confidence below 60% renders LOW-CONF.</div>
+    <div class="hint">Cache-first. Unsourced fields render UNKNOWN. Confidence below 60% renders 🟨 LOW-CONF.</div>
     <div id="lookup-error" class="err hidden"></div>
     <pre id="card" class="card hidden"></pre>
   </section>
@@ -126,11 +128,26 @@
     <div id="status-error" class="err hidden"></div>
   </section>
 
-  <footer>SMARTBIN v1.0.0 · cache · <span id="today">--</span></footer>
+  <section id="screen-refer" class="panel hidden">
+    <span class="label">Refer friends</span>
+    <div class="hint" style="margin-bottom:14px">Share your link. When someone joins via your link, you both get 5 free checks.</div>
+    <div class="row" style="align-items:center">
+      <div class="input-group" style="cursor:pointer" id="copy-btn">
+        <input id="ref-link" readonly placeholder="Loading your link...">
+      </div>
+      <button id="copy" class="ghost">Copy</button>
+    </div>
+    <div id="ref-error" class="err hidden"></div>
+    <div id="ref-success" class="hint hidden" style="color:var(--success)">Link copied!</div>
+  </section>
+
+  <footer>🧾 SMARTBIN v7.1.0 · cache · <span id="today">--</span> · @SmartBin_Bot</footer>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
+const VERSION = '7.1.0';
+
 function readInitData() {
   if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
     return window.Telegram.WebApp.initData;
@@ -142,6 +159,23 @@ function readInitData() {
 }
 const initData = readInitData();
 
+// §3.3 GLYPH system
+const GLYPH = {
+  LIVE: '🟩', DEAD: '🟥', UNKNOWN: '🟨', SOFT_DECLINE: '🟧', CACHED: '🟪',
+  CVV_MATCH: '🟢', CVV_MISMATCH: '🟠', CVV_UNCHECKED: '⚪',
+  AVS_MATCH: '🔵', AVS_PARTIAL: '🟡', AVS_MISMATCH: '🟤', AVS_UNCHECKED: '⚫',
+  3DS_NON_VBV: '🟦', 3DS_FRICTIONLESS: '🟦🔒', 3DS_CHALLENGED: '🔐',
+  3DS_EXEMPTED: '🛡️', 3DS_UNSUPPORTED: '🚫🔐', 3DS_UNKNOWN: '❔🔐',
+  VISA: '💳', MASTERCARD: '💰', AMEX: '🏦', DISCOVER: '🧿',
+  PREPAID: '🪙', DEBIT: '🏧', CREDIT: '💠', COMMERCIAL: '🏢',
+  CLASSIC: '📗', GOLD: '🥇', PLATINUM: '💎', SIGNATURE: '🖋️',
+  INFINITE: '♾️', WORLD: '🌍', WORLD_ELITE: '👑',
+};
+
+function brandGlyph(brand) { return GLYPH[brand?.toUpperCase()] || ''; }
+function typeGlyph(type) { return GLYPH[type?.toUpperCase()] || ''; }
+function levelGlyph(level) { return GLYPH[level?.toUpperCase()] || ''; }
+
 function conf(field, confs) {
   const value = Number((confs || {})[field] || 0);
   return value;
@@ -149,40 +183,69 @@ function conf(field, confs) {
 function shown(value, c) {
   const text = String(value || '').trim();
   if (!text || text.toUpperCase() === 'UNKNOWN') return 'UNKNOWN';
-  return c < 60 ? text + ' LOW-CONF' : text;
+  return c < 60 ? text + ' 🟨 LOW-CONF' : text;
 }
 function yes(v) { return Number(v || 0) ? 'YES' : 'NO'; }
 
+// §3.2 BIN CARD template
 function renderCard(d) {
   const confs = d.field_conf || {};
+  const bin8 = d.bin || 'UNKNOWN';
+  const brand = String(d.brand || 'UNKNOWN').toUpperCase();
+  const level = String(d.level || 'UNKNOWN').toUpperCase();
+  const cardType = String(d.card_type || 'CREDIT').toUpperCase();
   const bank = shown(d.bank, conf('bank', confs));
-  const iso = String(d.iso2 || '').toUpperCase();
-  const country = `${iso ? iso + ' · ' : ''}${d.country || 'UNKNOWN'}  CUR ${String(d.currency || 'UNKNOWN').toUpperCase()}`;
+  const country = String(d.country || 'UNKNOWN');
+  const iso2 = String(d.iso2 || '').toUpperCase();
+  const currency = String(d.currency || 'USD').toUpperCase();
+  const phone = String(d.phone || '');
+  const site = String(d.site || '');
+  const length = d.card_length || 16;
+  const prepaid = Number(d.prepaid || 0);
+  const commercial = Number(d.commercial || 0);
+  const atmDebit = Number(d.atm_debit || 0);
+  
   const twofa = d.twofa || 'UNKNOWN';
-  let note = '';
-  if (twofa === 'NON-VBV*') note = ' (single-gate)';
-  else if (twofa === 'NON-VBV') note = ' (two-gate)';
-  else if (twofa === 'LOW-CONF') note = ' (1 read)';
-  const sources = (d.sources || []).join(', ') || 'none';
-  const cp = (f) => {
-    const v = conf(f, confs);
-    return `${f} ${Math.round(v)}%${v < 60 ? '(LOW-CONF)' : ''}`;
-  };
+  const twofaReads = d.twofa_reads || 0;
+  const twofaConf = d.twofa_conf || 0;
+  let twofaNote = '';
+  if (twofa === 'NON-VBV*') twofaNote = ' (single-gate)';
+  else if (twofa === 'NON-VBV') twofaNote = ' (two-gate)';
+  
+  const fleetN = d.fleet_checks_30d || 0;
+  const fleetApproved = d.fleet_approved || 0;
+  const fleetSoft = d.fleet_soft || 0;
+  const fleetHard = d.fleet_hard || 0;
+  
+  const brandG = brandGlyph(brand);
+  const typeG = typeGlyph(cardType);
+  const levelG = levelGlyph(level);
+  const twofaG = twofa === 'NON-VBV*' || twofa === 'NON-VBV' ? GLYPH['3DS_NON_VBV'] : GLYPH['3DS_UNKNOWN'];
+  
   const lines = [
-    `BIN ${d.bin}  ${d.brand || 'UNKNOWN'}  ${d.level || 'UNKNOWN'}`,
-    `BANK         ${bank}`,
-    `COUNTRY      ${country}`,
-    `PHONE        ${String(d.phone || '').padEnd(22)} SITE ${d.site || ''}`.trimEnd(),
-    `PREPAID      ${yes(d.prepaid)}   COMMERCIAL ${yes(d.commercial)}   AVS ${yes(d.avs)}`,
-    `CARD         ${d.card_length || 16}-digit ${Number(d.luhn || 0) ? 'Luhn' : 'NO-LUHN'}`,
-    `BIN AGE      ${d.bin_age || 0}y   SAMPLE ${d.sample_size || 0}   VERIFIED ${(d.verified_utc || 'UNKNOWN').slice(0, 10)}`,
-    `DOB/SSN/MMN  ${d.dob ? '1' : ''}/${d.ssn ? '1' : ''}/${d.mmn ? '1' : ''}    (1 = commonly requested on challenge)`,
-    `2FA          ${twofa}${note}  conf ${Math.round(d.twofa_conf || 0)}  reads ${d.twofa_reads || 0}`,
-    `SOURCES      ${sources}`,
-    `CONF         ${cp('bank')} · ${cp('level')} · ${cp('brand')}`,
+    `🧬 SMARTBIN BIN TELEMETRY`,
+    `🔢 BIN     ${bin8}`,
+    phone ? `🏦 BANK    ${bank} ☎ ${phone.slice(0,7)}...` : `🏦 BANK    ${bank}`,
+    `💰 TYPE    ${brandG} ${brand} · ${typeG} ${cardType} · ${levelG} ${level}`,
+    `📍 WORLD   🇺🇸 ${country} · 💱 ${currency} · ${length} · 🧮 luhn`,
+    `🪙 PREPAID ${yes(prepaid)} · 🏢 COMMERCIAL ${yes(commercial)} · ATM DEBIT ${yes(atmDebit)}`,
   ];
+  
+  if (phone) lines.push(`☎ ISSUER  ${phone} → tap-to-call`);
+  if (site) lines.push(`🔗 SITE    ${site}`);
+  
+  lines.push(`🔐 2FA     ${twofaG} ${twofa}${twofaNote} · reads ${twofaReads} · conf ${Math.round(twofaConf)}`);
+  
+  if (fleetN >= 5) {
+    lines.push(`📊 FLEET   ${fleetN} checks · ${GLYPH.LIVE}${fleetApproved} · ${GLYPH.SOFT_DECLINE}${fleetSoft} · ${GLYPH.DEAD}${fleetHard} · last 2h ago`);
+  } else if (fleetN > 0) {
+    lines.push(`COLD BIN n=${fleetN}`);
+  }
+  
+  lines.push(`🧾 SMARTBIN v${VERSION} · cache · ${d.date || ''} · @SmartBin_Bot`);
+  
   if (d.watermark) lines.push('-- @SmartBin_Bot');
-  lines.push(`SMARTBIN v${d.version || '1.0.0'} · cache · ${d.date || ''}`);
+  
   return lines.join('\n');
 }
 
@@ -253,6 +316,47 @@ async function loadStatus() {
   }
 }
 
+async function loadRefLink() {
+  const err = $('ref-error');
+  err.classList.add('hidden');
+  try {
+    // Extract user_id from initData
+    let userId = '';
+    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+      userId = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+    }
+    
+    const res = await fetch('/api/reflink?user_id=' + encodeURIComponent(userId), {
+      headers: { 'X-Telegram-Init-Data': initData }
+    });
+    if (res.status === 401) {
+      $('ref-link').placeholder = 'Open from Telegram';
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to load referral link');
+    const data = await res.json();
+    $('ref-link').value = data.ref_link || '';
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+$('copy').addEventListener('click', async () => {
+  const link = $('ref-link').value;
+  if (!link) return;
+  try {
+    await navigator.clipboard.writeText(link);
+    $('ref-success').classList.remove('hidden');
+    setTimeout(() => $('ref-success').classList.add('hidden'), 2000);
+  } catch {
+    $('ref-link').select();
+    document.execCommand('copy');
+    $('ref-success').classList.remove('hidden');
+    setTimeout(() => $('ref-success').classList.add('hidden'), 2000);
+  }
+});
+
 document.querySelectorAll('.tab').forEach((tab) => {
   tab.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
@@ -260,9 +364,12 @@ document.querySelectorAll('.tab').forEach((tab) => {
     const screen = tab.dataset.screen;
     $('screen-lookup').classList.toggle('hidden', screen !== 'lookup');
     $('screen-status').classList.toggle('hidden', screen !== 'status');
+    $('screen-refer').classList.toggle('hidden', screen !== 'refer');
     if (screen === 'status') loadStatus();
+    if (screen === 'refer') loadRefLink();
   });
 });
+
 $('go').addEventListener('click', lookup);
 $('bin').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookup(); });
 loadStatus();
