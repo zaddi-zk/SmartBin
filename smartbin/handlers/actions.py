@@ -137,16 +137,17 @@ async def run_check_and_render(
 
 
 async def send_menu(message: Any, runtime: Any, user: Any = None) -> None:
+    """Send main menu with instant response - single message with inline keyboard."""
     user = user or message.from_user
     db_user = await ensure_user(runtime, user)
     admin = is_admin(user.id, runtime.config)
+    # Delete old message for instant response
+    try:
+        await message.delete()
+    except:
+        pass
     await message.answer(
         ui.menu_text(runtime.config, db_user),
-        parse_mode="HTML",
-        reply_markup=ui.main_menu(admin, runtime.config.miniapp_base),
-    )
-    await message.answer(
-        "<b>⚡ Quick actions</b>",
         parse_mode="HTML",
         reply_markup=ui.dashboard_kb(admin, runtime.config.miniapp_base),
     )

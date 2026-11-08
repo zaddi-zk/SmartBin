@@ -2,95 +2,101 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>SMARTBIN</title>
 <style>
   :root{
-    --bg:#0a0a0b; --panel:#141416; --panel2:#18181b; --line:#26262b;
-    --text:#ececec; --dim:#a1a1a6; --accent:#d4af37; --accent2:#f0cf6a;
-    --success:#22c55e; --danger:#ef4444;
+    --bg:#0a0a0b; --panel:#141416; --panel2:#1a1a1e; --line:#2a2a30;
+    --text:#f0f0f2; --dim:#a1a1aa; --accent:#d4af37; --accent2:#f5d76e;
+    --success:#22c55e; --danger:#ef4444; --warn:#f59e0b;
+    --radius:12px; --shadow:0 8px 32px rgba(0,0,0,.4);
   }
-  *{box-sizing:border-box}
-  html,body{width:100%;min-height:100vh;margin:0}
-  body{
-    background:
-      radial-gradient(900px 420px at 8% -12%,rgba(212,175,55,.10) 0%,transparent 60%),
-      radial-gradient(700px 380px at 110% 6%,rgba(240,207,106,.06) 0%,transparent 55%),
-      var(--bg);
-    color:var(--text);
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-    -webkit-font-smoothing:antialiased;
-  }
-  .wrap{width:100%;min-height:100vh;margin:0 auto;padding:20px 16px 40px}
-  header,.header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0 18px;border-bottom:1px solid var(--line)}
-  .avatar{
-    width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
-    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#151006;
-    font-weight:800;letter-spacing:.5px;box-shadow:0 0 22px rgba(212,175,55,.25)
-  }
-  .brand{font-weight:700;letter-spacing:1.4px}
-  .sub{color:var(--dim);font-size:12px;margin-top:2px}
-  .status-dot{height:8px;width:8px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success);flex:none}
-  .tabs{display:flex;gap:8px;margin:14px 0 16px}
-  .tab{
-    flex:1;text-align:center;padding:10px 12px;border:1px solid var(--line);
-    border-radius:10px;background:var(--panel);color:var(--dim);cursor:pointer;
-    font-size:12px;letter-spacing:1px;text-transform:uppercase;transition:color .15s,border-color .15s
-  }
-  .tab.active{color:#151006;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;font-weight:700}
-  .panel,.card{
-    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;
-    box-shadow:0 8px 24px rgba(0,0,0,.35);margin-bottom:16px
-  }
-  .label{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:block}
-  .row{display:flex;gap:10px}
-  .input-group{background:#0e0e10;border:1px solid var(--line);border-radius:8px;padding:4px 4px 4px 12px;display:flex;gap:8px;align-items:center;flex:1}
-  input,textarea{
-    flex:1;background:transparent;border:0;color:var(--text);padding:10px 0;
-    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;outline:none;resize:none
-  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{width:100%;min-height:100vh;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:540px;margin:0 auto;padding:16px;padding-bottom:80px}
+  header{display:flex;align-items:center;justify-content:space-between;
+    padding:16px 0 20px;border-bottom:1px solid var(--line);margin-bottom:16px}
+  .left{display:flex;align-items:center;gap:14px}
+  .avatar{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#1a1508;font-weight:800;font-size:18px;letter-spacing:1px;
+    box-shadow:0 0 28px rgba(212,175,55,.3)}
+  .info h1{font-size:18px;font-weight:700;letter-spacing:.5px}
+  .info p{font-size:12px;color:var(--dim);margin-top:2px}
+  .status{display:flex;align-items:center;gap:8px;padding:8px 12px;
+    background:var(--panel);border:1px solid var(--line);border-radius:999px;font-size:12px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--success);
+    box-shadow:0 0 10px var(--success)}
+  .tabs{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;padding-bottom:4px}
+  .tab{padding:10px 16px;border:1px solid var(--line);border-radius:10px;
+    background:var(--panel);color:var(--dim);cursor:pointer;white-space:nowrap;
+    font-size:12px;font-weight:600;letter-spacing:.5px;transition:all .2s}
+  .tab.active{background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#1a1508;border-color:transparent}
+  .panel{background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);margin-bottom:16px}
+  .label{color:var(--dim);font-size:11px;text-transform:uppercase;
+    letter-spacing:1px;margin-bottom:10px;display:block;font-weight:600}
+  .row{display:flex;gap:10px;align-items:center}
+  .input-wrap{flex:1;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:6px 6px 6px 14px;display:flex;gap:10px;align-items:center}
+  input{flex:1;background:transparent;border:0;color:var(--text);
+    font-size:15px;padding:8px 0;outline:none;font-family:inherit}
   input::placeholder{color:#6b6b72}
-  button,.btn{
-    border:0;border-radius:8px;padding:12px 18px;font:inherit;font-weight:700;letter-spacing:.4px;
-    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#151006;cursor:pointer;
-    transition:transform .1s,opacity .2s
-  }
-  button:active,.btn:active{transform:scale(.98);opacity:.9}
+  button{border:0;border-radius:10px;padding:12px 20px;font:inherit;
+    font-weight:700;font-size:14px;letter-spacing:.3px;cursor:pointer;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    color:#1a1508;transition:transform .1s,opacity .2s}
+  button:active{transform:scale(.98);opacity:.9}
   button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
-  pre.card,.result-block{
-    margin:14px 0 0;padding:14px;border-radius:8px;background:#0e0e10;
-    border:1px solid var(--line);overflow:auto;font-size:12.5px;line-height:1.6;
-    white-space:pre;color:#c9c9cf;
-    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
-  }
-  .meta-row{display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
-  .stat-good{color:var(--success)} .stat-bad{color:var(--danger)}
-  .hint{color:var(--dim);font-size:12px;margin-top:10px;line-height:1.5}
-  .err{color:var(--danger);font-size:13px;margin-top:10px}
-  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px}
-  .stat{background:#0e0e10;border:1px solid var(--line);border-radius:8px;padding:12px}
-  .stat .k{color:var(--dim);font-size:11px;letter-spacing:.8px;text-transform:uppercase}
-  .stat .v{font-size:19px;margin-top:6px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-  .gates{margin-top:12px;display:flex;flex-direction:column;gap:8px}
-  .gate{display:flex;justify-content:space-between;gap:8px;background:#0e0e10;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  pre.result{margin:14px 0 0;padding:16px;border-radius:10px;
+    background:#0f0f12;border:1px solid var(--line);overflow:auto;
+    font-size:13px;line-height:1.65;white-space:pre;color:#c9c9d1;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .err{color:var(--danger);font-size:13px;margin-top:12px}
+  .hint{color:var(--dim);font-size:12px;margin-top:12px;line-height:1.5}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:8px}
+  .stat{background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:14px}
+  .stat .k{color:var(--dim);font-size:10px;letter-spacing:.8px;
+    text-transform:uppercase;font-weight:600}
+  .stat .v{font-size:20px;margin-top:6px;font-weight:700;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .gates{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+  .gate{display:flex;justify-content:space-between;gap:10px;
+    background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:12px;font-size:12px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .up{color:var(--success)} .down{color:var(--danger)}
-  footer{color:var(--dim);font-size:11px;text-align:center;margin-top:20px;letter-spacing:.5px}
+  footer{position:fixed;bottom:0;left:0;right:0;background:var(--panel);
+    border-top:1px solid var(--line);padding:12px 16px;text-align:center;
+    color:var(--dim);font-size:11px;letter-spacing:.5px}
   .hidden{display:none}
-  .ref-link{word-break:break-all}
+  .user-info{display:flex;align-items:center;gap:10px;margin-top:12px;
+    padding-top:12px;border-top:1px solid var(--line)}
+  .user-info img{width:32px;height:32px;border-radius:50%}
+  .user-info div{flex:1}
+  .user-info div span:first-child{display:block;color:var(--text);font-size:13px;font-weight:600}
+  .user-info div span:last-child{display:block;color:var(--dim);font-size:11px}
+  .ref-box{background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:14px;margin-top:12px}
+  .ref-link{word-break:break-all;color:var(--accent);font-size:13px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header>
-    <div style="display:flex;align-items:center;gap:12px">
+    <div class="left">
       <div class="avatar">SB</div>
-      <div>
-        <div class="brand">SMARTBIN</div>
-        <div class="sub">card intelligence · v7.1.0</div>
+      <div class="info">
+        <h1>SMARTBIN</h1>
+        <p>Card Intelligence · v7.1.0</p>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:8px;color:var(--dim);font-size:11px;letter-spacing:1px">
-      <span class="status-dot" id="dot"></span>
+    <div class="status">
+      <span class="dot" id="dot"></span>
       <span id="net">ONLINE</span>
     </div>
   </header>
@@ -102,278 +108,260 @@
   </div>
 
   <section id="screen-lookup" class="panel">
-    <span class="label">BIN lookup</span>
+    <span class="label">BIN Lookup</span>
     <div class="row">
-      <div class="input-group">
+      <div class="input-wrap">
         <input id="bin" inputmode="numeric" autocomplete="off" placeholder="6 or 8 digit BIN">
       </div>
-      <button id="go">Lookup</button>
+      <button id="go">Search</button>
     </div>
-    <div class="hint">Cache-first. Unsourced fields render UNKNOWN. Confidence below 60% renders 🟨 LOW-CONF.</div>
+    <div class="hint">Cache-first metadata. Confidence below 60% shows LOW-CONF.</div>
     <div id="lookup-error" class="err hidden"></div>
-    <pre id="card" class="card hidden"></pre>
+    <pre id="card" class="result hidden"></pre>
+    <div class="user-info" id="user-info" style="display:none">
+      <img id="user-photo" src="" alt="">
+      <div>
+        <span id="user-name">User</span>
+        <span id="user-id">@username</span>
+      </div>
+    </div>
   </section>
 
   <section id="screen-status" class="panel hidden">
     <div class="grid">
       <div class="stat"><div class="k">Uptime</div><div class="v" id="s-uptime">--</div></div>
       <div class="stat"><div class="k">Users</div><div class="v" id="s-users">--</div></div>
-      <div class="stat"><div class="k">Checks today</div><div class="v" id="s-checks">--</div></div>
-      <div class="stat"><div class="k">Cache depth</div><div class="v" id="s-cache">--</div></div>
-      <div class="stat"><div class="k">Latency p50</div><div class="v" id="s-p50">--</div></div>
-      <div class="stat"><div class="k">Latency p95</div><div class="v" id="s-p95">--</div></div>
+      <div class="stat"><div class="k">Checks Today</div><div class="v" id="s-checks">--</div></div>
+      <div class="stat"><div class="k">Cache</div><div class="v" id="s-cache">--</div></div>
+      <div class="stat"><div class="k">P50</div><div class="v" id="s-p50">--</div></div>
+      <div class="stat"><div class="k">P95</div><div class="v" id="s-p95">--</div></div>
     </div>
     <div class="gates" id="gates"></div>
-    <div class="hint">Auto-refresh every 30s. Gate identity is private.</div>
+    <div class="hint">Auto-refresh 30s · Gate identity private</div>
     <div id="status-error" class="err hidden"></div>
   </section>
 
   <section id="screen-refer" class="panel hidden">
-    <span class="label">Refer friends</span>
-    <div class="hint" style="margin-bottom:14px">Share your link. When someone joins via your link, you both get 5 free checks.</div>
-    <div class="row" style="align-items:center">
-      <div class="input-group" style="cursor:pointer" id="copy-btn">
-        <input id="ref-link" readonly placeholder="Loading your link...">
+    <span class="label">Refer & Earn</span>
+    <p class="hint" style="margin-bottom:14px">
+      🎁 Invite friends and you BOTH get <b>5 free checks</b>!
+    </p>
+    <div class="ref-box">
+      <div class="label" style="margin-bottom:8px">Your Link</div>
+      <div class="row" style="align-items:center">
+        <input id="ref-link" readonly style="font-size:13px">
+        <button id="copy" class="ghost">Copy</button>
       </div>
-      <button id="copy" class="ghost">Copy</button>
     </div>
+    <div id="ref-success" class="hint hidden" style="color:var(--success);margin-top:10px">✓ Copied to clipboard!</div>
     <div id="ref-error" class="err hidden"></div>
-    <div id="ref-success" class="hint hidden" style="color:var(--success)">Link copied!</div>
   </section>
 
   <footer>🧾 SMARTBIN v7.1.0 · cache · <span id="today">--</span> · @SmartBin_Bot</footer>
 </div>
 
 <script>
-const $ = (id) => document.getElementById(id);
+const $ = id => document.getElementById(id);
 const VERSION = '7.1.0';
 
-function readInitData() {
-  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
-    return window.Telegram.WebApp.initData;
-  }
-  const hash = new URLSearchParams(location.hash.slice(1));
-  const fromHash = hash.get('tgWebAppData');
-  if (fromHash) return fromHash;
-  return new URLSearchParams(location.search).get('initData') || '';
-}
-const initData = readInitData();
-
-// §3.3 GLYPH system
-const GLYPH = {
-  LIVE: '🟩', DEAD: '🟥', UNKNOWN: '🟨', SOFT_DECLINE: '🟧', CACHED: '🟪',
-  CVV_MATCH: '🟢', CVV_MISMATCH: '🟠', CVV_UNCHECKED: '⚪',
-  AVS_MATCH: '🔵', AVS_PARTIAL: '🟡', AVS_MISMATCH: '🟤', AVS_UNCHECKED: '⚫',
-  3DS_NON_VBV: '🟦', 3DS_FRICTIONLESS: '🟦🔒', 3DS_CHALLENGED: '🔐',
-  3DS_EXEMPTED: '🛡️', 3DS_UNSUPPORTED: '🚫🔐', 3DS_UNKNOWN: '❔🔐',
-  VISA: '💳', MASTERCARD: '💰', AMEX: '🏦', DISCOVER: '🧿',
-  PREPAID: '🪙', DEBIT: '🏧', CREDIT: '💠', COMMERCIAL: '🏢',
-  CLASSIC: '📗', GOLD: '🥇', PLATINUM: '💎', SIGNATURE: '🖋️',
-  INFINITE: '♾️', WORLD: '🌍', WORLD_ELITE: '👑',
+// §3.3 GLYPH system - emoji compatible
+const G = {
+  LIVE:'🟩',DEAD:'🟥',UNKNOWN:'🟨',SOFT:'🟧',CACHE:'🟪',
+  CVV_OK:'🟢',CVV_BAD:'🟠',CVV_NA:'⚪',
+  AVS_OK:'🔵',AVS_PART:'🟡',AVS_BAD:'🟤',AVS_NA:'⚫',
+  3DS_NV:'🟦',3DS_FL:'🟦🔒',3DS_CH:'🔐',3DS_EX:'🛡️',3DS_UK:'❔',
+  VISA:'💳',MC:'💰',AMEX:'🏦',DISC:'🧿',
+  CR:'💠',DB:'🏧',PP:'🪙',CM:'🏢',
+  CL:'📗',GD:'🥇',PT:'💎',SG:'🖋️',IN:'♾️',WL:'🌍',WE:'👑',
 };
 
-function brandGlyph(brand) { return GLYPH[brand?.toUpperCase()] || ''; }
-function typeGlyph(type) { return GLYPH[type?.toUpperCase()] || ''; }
-function levelGlyph(level) { return GLYPH[level?.toUpperCase()] || ''; }
+function brandG(b){return G[b?.toUpperCase()]||''}
+function typeG(t){return G[t?.toUpperCase()]||''}
+function levelG(l){return G[l?.toUpperCase()]||''}
 
-function conf(field, confs) {
-  const value = Number((confs || {})[field] || 0);
-  return value;
+function readInitData(){
+  if(window.Telegram?.WebApp?.initData)return window.Telegram.WebApp.initData;
+  const h=new URLSearchParams(location.hash.slice(1));
+  return h.get('tgWebAppData')||new URLSearchParams(location.search).get('initData')||'';
 }
-function shown(value, c) {
-  const text = String(value || '').trim();
-  if (!text || text.toUpperCase() === 'UNKNOWN') return 'UNKNOWN';
-  return c < 60 ? text + ' 🟨 LOW-CONF' : text;
+const initData=readInitData();
+
+function shown(v,c){
+  const t=String(v||'').trim();
+  if(!t||t.toUpperCase()==='UNKNOWN')return'UNKNOWN';
+  return c<60?`${t} LOW-CONF`:t;
 }
-function yes(v) { return Number(v || 0) ? 'YES' : 'NO'; }
+function yes(v){return Number(v||0)?'YES':'NO'}
 
 // §3.2 BIN CARD template
-function renderCard(d) {
-  const confs = d.field_conf || {};
-  const bin8 = d.bin || 'UNKNOWN';
-  const brand = String(d.brand || 'UNKNOWN').toUpperCase();
-  const level = String(d.level || 'UNKNOWN').toUpperCase();
-  const cardType = String(d.card_type || 'CREDIT').toUpperCase();
-  const bank = shown(d.bank, conf('bank', confs));
-  const country = String(d.country || 'UNKNOWN');
-  const iso2 = String(d.iso2 || '').toUpperCase();
-  const currency = String(d.currency || 'USD').toUpperCase();
-  const phone = String(d.phone || '');
-  const site = String(d.site || '');
-  const length = d.card_length || 16;
-  const prepaid = Number(d.prepaid || 0);
-  const commercial = Number(d.commercial || 0);
-  const atmDebit = Number(d.atm_debit || 0);
+function renderCard(d){
+  const confs=d.field_conf||{};
+  const c=f=>Number(confs[f]||0);
+  const bin8=d.bin||'UNKNOWN';
+  const brand=String(d.brand||'UNKNOWN').toUpperCase();
+  const level=String(d.level||'UNKNOWN').toUpperCase();
+  const ctype=String(d.card_type||'CREDIT').toUpperCase();
+  const bank=shown(d.bank,c('bank'));
+  const country=String(d.country||'UNKNOWN');
+  const iso2=String(d.iso2||'').toUpperCase();
+  const currency=String(d.currency||'USD').toUpperCase();
+  const phone=String(d.phone||'');
+  const site=String(d.site||'');
+  const len=d.card_length||16;
+  const twofa=d.twofa||'UNKNOWN';
+  const tr=d.twofa_reads||0;
+  const tc=d.twofa_conf||0;
+  let note='';
+  if(twofa==='NON-VBV*')note=' (single-gate)';
+  else if(twofa==='NON-VBV')note=' (two-gate)';
   
-  const twofa = d.twofa || 'UNKNOWN';
-  const twofaReads = d.twofa_reads || 0;
-  const twofaConf = d.twofa_conf || 0;
-  let twofaNote = '';
-  if (twofa === 'NON-VBV*') twofaNote = ' (single-gate)';
-  else if (twofa === 'NON-VBV') twofaNote = ' (two-gate)';
+  const fn=d.fleet_checks_30d||0;
+  const fa=d.fleet_approved||0;
+  const fs=d.fleet_soft||0;
+  const fh=d.fleet_hard||0;
   
-  const fleetN = d.fleet_checks_30d || 0;
-  const fleetApproved = d.fleet_approved || 0;
-  const fleetSoft = d.fleet_soft || 0;
-  const fleetHard = d.fleet_hard || 0;
+  const bg=brandG(brand),tg=typeG(ctype),lg=levelG(level);
+  let twg=G['3DS_UK'];
+  if(twofa.includes('NON-VBV'))twg=G['3DS_NV'];
+  else if(twofa==='FRICTIONLESS')twg=G['3DS_FL'];
+  else if(twofa==='CHALLENGED')twg=G['3DS_CH'];
+  else if(twofa==='EXEMPTED')twg=G['3DS_EX'];
   
-  const brandG = brandGlyph(brand);
-  const typeG = typeGlyph(cardType);
-  const levelG = levelGlyph(level);
-  const twofaG = twofa === 'NON-VBV*' || twofa === 'NON-VBV' ? GLYPH['3DS_NON_VBV'] : GLYPH['3DS_UNKNOWN'];
-  
-  const lines = [
+  const lines=[
     `🧬 SMARTBIN BIN TELEMETRY`,
     `🔢 BIN     ${bin8}`,
-    phone ? `🏦 BANK    ${bank} ☎ ${phone.slice(0,7)}...` : `🏦 BANK    ${bank}`,
-    `💰 TYPE    ${brandG} ${brand} · ${typeG} ${cardType} · ${levelG} ${level}`,
-    `📍 WORLD   🇺🇸 ${country} · 💱 ${currency} · ${length} · 🧮 luhn`,
-    `🪙 PREPAID ${yes(prepaid)} · 🏢 COMMERCIAL ${yes(commercial)} · ATM DEBIT ${yes(atmDebit)}`,
+    phone?`🏦 BANK    ${bank} ☎ ${phone.slice(0,7)}...`:`🏦 BANK    ${bank}`,
+    `💰 TYPE    ${bg} ${brand} · ${tg} ${ctype} · ${lg} ${level}`,
+    `📍 WORLD   🇺🇸 ${country} · 💱 ${currency} · ${len} · 🧮 luhn`,
+    `🪙 PREPAID ${yes(d.prepaid)} · 🏢 COMMERCIAL ${yes(d.commercial)} · ATM DEBIT ${yes(d.atm_debit)}`,
   ];
-  
-  if (phone) lines.push(`☎ ISSUER  ${phone} → tap-to-call`);
-  if (site) lines.push(`🔗 SITE    ${site}`);
-  
-  lines.push(`🔐 2FA     ${twofaG} ${twofa}${twofaNote} · reads ${twofaReads} · conf ${Math.round(twofaConf)}`);
-  
-  if (fleetN >= 5) {
-    lines.push(`📊 FLEET   ${fleetN} checks · ${GLYPH.LIVE}${fleetApproved} · ${GLYPH.SOFT_DECLINE}${fleetSoft} · ${GLYPH.DEAD}${fleetHard} · last 2h ago`);
-  } else if (fleetN > 0) {
-    lines.push(`COLD BIN n=${fleetN}`);
+  if(phone)lines.push(`☎ ISSUER  ${phone} → tap-to-call`);
+  if(site)lines.push(`🔗 SITE    ${site}`);
+  lines.push(`🔐 2FA     ${twg} ${twofa}${note} · reads ${tr} · conf ${Math.round(tc)}`);
+  if(fn>=5){
+    lines.push(`📊 FLEET   ${fn} checks · ${G.LIVE}${fa} · ${G.SOFT}${fs} · ${G.DEAD}${fh} · last 2h`);
+  }else if(fn>0){
+    lines.push(`COLD BIN n=${fn}`);
   }
-  
-  lines.push(`🧾 SMARTBIN v${VERSION} · cache · ${d.date || ''} · @SmartBin_Bot`);
-  
-  if (d.watermark) lines.push('-- @SmartBin_Bot');
-  
+  lines.push(`🧾 SMARTBIN v${VERSION} · cache · ${d.date||''} · @SmartBin_Bot`);
+  if(d.watermark)lines.push('-- @SmartBin_Bot');
   return lines.join('\n');
 }
 
-async function lookup() {
-  const raw = $('bin').value.trim();
-  const err = $('lookup-error');
-  const card = $('card');
-  err.classList.add('hidden');
-  card.classList.add('hidden');
-  if (!/^\d{6}(\d{2})?$/.test(raw)) {
-    err.textContent = 'BIN must be 6 or 8 digits.';
-    err.classList.remove('hidden');
-    return;
+async function lookup(){
+  const raw=$('bin').value.trim();
+  const err=$('lookup-error'),card=$('card');
+  err.classList.add('hidden');card.classList.add('hidden');
+  if(!/^\d{6}(\d{2})?$/.test(raw)){
+    err.textContent='BIN must be 6 or 8 digits.';
+    err.classList.remove('hidden');return;
   }
-  try {
-    const res = await fetch('/api/bin?bin=' + encodeURIComponent(raw), {
-      headers: { 'X-Telegram-Init-Data': initData }
+  try{
+    const res=await fetch('/api/bin?bin='+encodeURIComponent(raw),{
+      headers:{'X-Telegram-Init-Data':initData}
     });
-    if (res.status === 401) throw new Error('Open this Mini App from Telegram (initData required).');
-    if (!res.ok) throw new Error('Lookup failed (' + res.status + ').');
-    const data = await res.json();
-    card.textContent = renderCard(data);
+    if(res.status===401)throw new Error('Open from Telegram');
+    if(!res.ok)throw new Error('Lookup failed ('+res.status+')');
+    const data=await res.json();
+    card.textContent=renderCard(data);
     card.classList.remove('hidden');
-  } catch (e) {
-    err.textContent = e.message;
-    err.classList.remove('hidden');
+  }catch(e){
+    err.textContent=e.message;err.classList.remove('hidden');
   }
 }
 
-async function loadStatus() {
-  const err = $('status-error');
-  err.classList.add('hidden');
-  try {
-    const res = await fetch('/api/status', {
-      headers: { 'X-Telegram-Init-Data': initData }
-    });
-    if (res.status === 401) throw new Error('Open this Mini App from Telegram (initData required).');
-    if (!res.ok) throw new Error('Status failed (' + res.status + ').');
-    const d = await res.json();
-    $('s-uptime').textContent = d.uptime;
-    $('s-users').textContent = d.users;
-    $('s-checks').textContent = d.checks_today;
-    $('s-cache').textContent = d.cache_depth;
-    $('s-p50').textContent = d.p50 + 'ms';
-    $('s-p95').textContent = d.p95 + 'ms';
-    $('today').textContent = d.date;
-    const gates = $('gates');
-    gates.innerHTML = '';
-    (d.gates || []).forEach((g) => {
-      const el = document.createElement('div');
-      el.className = 'gate';
-      const healthy = Number(g.enabled) && Number(g.window_state) === 1;
-      const canary = Number(g.window_total) ? `${g.window_pass}/${g.window_total}` : `${g.pass_rate}%`;
-      el.innerHTML = `<span>${healthy ? '🟢' : '🔴'} ${g.label}</span><span class="${healthy ? 'up' : 'down'}">${healthy ? 'HEALTHY' : 'DEGRADED'}</span><span>canary ${canary}</span><span>p50 ${g.p50}ms / p95 ${g.p95}ms</span>`;
+async function loadStatus(){
+  const err=$('status-error');err.classList.add('hidden');
+  try{
+    const res=await fetch('/api/status',{headers:{'X-Telegram-Init-Data':initData}});
+    if(res.status===401)throw new Error('Open from Telegram');
+    if(!res.ok)throw new Error('Status failed');
+    const d=await res.json();
+    $('s-uptime').textContent=d.uptime;
+    $('s-users').textContent=d.users;
+    $('s-checks').textContent=d.checks_today;
+    $('s-cache').textContent=d.cache_depth;
+    $('s-p50').textContent=d.p50+'ms';
+    $('s-p95').textContent=d.p95+'ms';
+    $('today').textContent=d.date;
+    const gates=$('gates');gates.innerHTML='';
+    (d.gates||[]).forEach(g=>{
+      const el=document.createElement('div');el.className='gate';
+      const ok=Number(g.enabled)&&Number(g.window_state)===1;
+      const can=Number(g.window_total)?`${g.window_pass}/${g.window_total}`:`${g.pass_rate}%`;
+      el.innerHTML=`<span>${ok?'🟢':'🔴'} ${g.label}</span><span class="${ok?'up':'down'}">${ok?'HEALTHY':'DEGRADED'}</span><span>canary ${can}</span><span>p50 ${g.p50}ms</span>`;
       gates.appendChild(el);
     });
-    const routing = document.createElement('div');
-    routing.className = 'hint';
-    routing.textContent = 'Routing: Auto-Route · ISO2 first · canary-gated';
-    gates.appendChild(routing);
-    const healthyAll = (d.gates || []).length > 0 && (d.gates || []).every((g) => Number(g.enabled) && Number(g.window_state) === 1);
-    $('dot').style.background = healthyAll ? 'var(--success)' : '#f5c451';
-    $('dot').style.boxShadow = healthyAll ? '0 0 8px var(--success)' : '0 0 8px #f5c451';
-    $('net').textContent = healthyAll ? 'ONLINE' : 'DEGRADED';
-  } catch (e) {
-    err.textContent = e.message;
-    err.classList.remove('hidden');
-  }
+    const r=document.createElement('div');r.className='hint';
+    r.textContent='Routing: Auto-Route · ISO2 first · canary-gated';
+    gates.appendChild(r);
+    const all=(d.gates||[]).length>0&&(d.gates||[]).every(g=>Number(g.enabled)&&Number(g.window_state)===1);
+    $('dot').style.background=all?'var(--success)':'#f59e0b';
+    $('dot').style.boxShadow=all?'0 0 10px var(--success)':'0 0 10px #f59e0b';
+    $('net').textContent=all?'ONLINE':'DEGRADED';
+  }catch(e){err.textContent=e.message;err.classList.remove('hidden');}
 }
 
-async function loadRefLink() {
-  const err = $('ref-error');
-  err.classList.add('hidden');
-  try {
-    // Extract user_id from initData
-    let userId = '';
-    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
-      userId = window.Telegram.WebApp.initDataUnsafe.user.id.toString();
-    }
-    
-    const res = await fetch('/api/reflink?user_id=' + encodeURIComponent(userId), {
-      headers: { 'X-Telegram-Init-Data': initData }
+async function loadUser(){
+  if(!window.Telegram?.WebApp?.initDataUnsafe?.user)return;
+  const u=window.Telegram.WebApp.initDataUnsafe.user;
+  $('user-name').textContent=u.first_name+(u.last_name?' '+u.last_name:'');
+  $('user-id').textContent=u.username?'@'+u.username:'ID '+u.id;
+  if(u.photo_url)$('user-photo').src=u.photo_url;
+  else $('user-photo').style.display='none';
+  $('user-info').style.display='flex';
+}
+
+async function loadRef(){
+  const err=$('ref-error');err.classList.add('hidden');
+  let uid='';
+  if(window.Telegram?.WebApp?.initDataUnsafe?.user){
+    uid=window.Telegram.WebApp.initDataUnsafe.user.id.toString();
+  }
+  try{
+    const res=await fetch('/api/reflink?user_id='+encodeURIComponent(uid),{
+      headers:{'X-Telegram-Init-Data':initData}
     });
-    if (res.status === 401) {
-      $('ref-link').placeholder = 'Open from Telegram';
-      return;
-    }
-    if (!res.ok) throw new Error('Failed to load referral link');
-    const data = await res.json();
-    $('ref-link').value = data.ref_link || '';
-  } catch (e) {
-    err.textContent = e.message;
-    err.classList.remove('hidden');
-  }
+    if(res.status===401){$('ref-link').placeholder='Open from Telegram';return;}
+    if(!res.ok)throw new Error('Failed');
+    const d=await res.json();
+    $('ref-link').value=d.ref_link||'';
+  }catch(e){err.textContent=e.message;err.classList.remove('hidden');}
 }
 
-$('copy').addEventListener('click', async () => {
-  const link = $('ref-link').value;
-  if (!link) return;
-  try {
-    await navigator.clipboard.writeText(link);
-    $('ref-success').classList.remove('hidden');
-    setTimeout(() => $('ref-success').classList.add('hidden'), 2000);
-  } catch {
-    $('ref-link').select();
-    document.execCommand('copy');
-    $('ref-success').classList.remove('hidden');
-    setTimeout(() => $('ref-success').classList.add('hidden'), 2000);
+$('copy').onclick=async()=>{
+  const l=$('ref-link').value;if(!l)return;
+  try{
+    await navigator.clipboard.writeText(l);
+  }catch{
+    $('ref-link').select();document.execCommand('copy');
   }
-});
+  $('ref-success').classList.remove('hidden');
+  setTimeout(()=>$('ref-success').classList.add('hidden'),2000);
+};
 
-document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick=()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
-    const screen = tab.dataset.screen;
-    $('screen-lookup').classList.toggle('hidden', screen !== 'lookup');
-    $('screen-status').classList.toggle('hidden', screen !== 'status');
-    $('screen-refer').classList.toggle('hidden', screen !== 'refer');
-    if (screen === 'status') loadStatus();
-    if (screen === 'refer') loadRefLink();
-  });
+    const s=tab.dataset.screen;
+    $('screen-lookup').classList.toggle('hidden',s!=='lookup');
+    $('screen-status').classList.toggle('hidden',s!=='status');
+    $('screen-refer').classList.toggle('hidden',s!=='refer');
+    if(s==='status')loadStatus();
+    if(s==='refer')loadRef();
+  };
 });
 
-$('go').addEventListener('click', lookup);
-$('bin').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookup(); });
+$('go').onclick=lookup;
+$('bin').onkeydown=e=>{if(e.key==='Enter')lookup()};
+
+// Init
+Telegram?.WebApp?.ready();
+Telegram?.WebApp?.expand();
 loadStatus();
-setInterval(loadStatus, 30000);
+loadUser();
+setInterval(loadStatus,30000);
 </script>
 </body>
 </html>

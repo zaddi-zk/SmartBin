@@ -54,7 +54,7 @@ class Config:
     admin_id: int = 0
     db_path: str = "smartbin.db"
     miniapp_port: int = 8877
-    miniapp_base: str = "http://localhost:8877"
+    miniapp_base: str = "https://smartbin-eurr.onrender.com"
 
     stripe_api_key: str = ""
     stripe_test_mode: bool = True
@@ -95,7 +95,7 @@ class Config:
             admin_id=_int(env, "ADMIN_ID", 0),
             db_path=env.get("DB_PATH", "smartbin.db"),
             miniapp_port=_int(env, "MINIAPP_PORT", 8877),
-            miniapp_base=env.get("MINIAPP_BASE", "http://localhost:8877"),
+            miniapp_base=env.get("MINIAPP_BASE", "https://smartbin-eurr.onrender.com"),
             stripe_api_key=env.get("STRIPE_API_KEY", ""),
             stripe_test_mode=_bool(env, "STRIPE_TEST_MODE", True),
             canary_nonvbv=env.get("CANARY_NONVBV") or cls.canary_nonvbv,

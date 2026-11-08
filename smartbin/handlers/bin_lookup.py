@@ -37,6 +37,17 @@ async def bin_cmd(
         rows = await runtime.db.search_bins(raw)
         if not rows:
             await message.answer(
+                f"❌ No BIN found for <code>{raw}</code>",
+                parse_mode="HTML",
+                reply_markup=ui.dashboard_kb(False, runtime.config.miniapp_base),
+            )
+            return
+        # Show first result
+        await perform_bin_lookup(message, runtime, rows[0]["bin"], free=True)
+        return
+    # 6 or 8 digit BIN
+    await perform_bin_lookup(message, runtime, arg, free=True)
+            await message.answer(
                 "No matching BINs in cache. Send 6 or 8 digits.",
                 reply_markup=ui.cancel_kb(),
             )

@@ -12,28 +12,29 @@ FOOTER_PREFIX = "SMARTBIN"
 WATERMARK = "-- @SmartBin_Bot"
 
 # §3.3 EMOJI DESIGN SYSTEM — one glyph per concept, codes rule
+# Emoji-compatible across all devices (iOS, Android, Telegram)
 GLYPH = {
     # liveness
-    "LIVE": "🟩", "DEAD": "🟥", "UNKNOWN": "🟨", "SOFT_DECLINE": "🟧",
-    "CACHED": "🟪", "UNTESTED": "⬜",
+    "LIVE": "✅", "DEAD": "❌", "UNKNOWN": "❓", "SOFT_DECLINE": "⚠️",
+    "CACHED": "💾", "UNTESTED": "⬜",
     # cvv
-    "CVV_MATCH": "🟢", "CVV_MISMATCH": "🟠", "CVV_UNCHECKED": "⚪",
+    "CVV_MATCH": "✅", "CVV_MISMATCH": "⚠️", "CVV_UNCHECKED": "⚪",
     # avs
-    "AVS_MATCH": "🔵", "AVS_PARTIAL": "🟡", "AVS_MISMATCH": "🟤", "AVS_UNCHECKED": "⚫",
+    "AVS_MATCH": "✅", "AVS_PARTIAL": "⚠️", "AVS_MISMATCH": "❌", "AVS_UNCHECKED": "⚫",
     # 3ds
-    "3DS_NON_VBV": "🟦", "3DS_FRICTIONLESS": "🟦🔒", "3DS_CHALLENGED": "🔐",
-    "3DS_EXEMPTED": "🛡️", "3DS_UNSUPPORTED": "🚫🔐", "3DS_UNKNOWN": "❔🔐",
-    "3DS_ORACLE_OK": "🔏",
+    "3DS_NON_VBV": "🔓", "3DS_FRICTIONLESS": "✅", "3DS_CHALLENGED": "🔐",
+    "3DS_EXEMPTED": "🛡️", "3DS_UNSUPPORTED": "❌", "3DS_UNKNOWN": "❓",
+    "3DS_ORACLE_OK": "🔒",
     # brands
-    "VISA": "💳", "MASTERCARD": "💰", "AMEX": "🏦", "DISCOVER": "🧿",
-    "JCB": "🗾", "UNIONPAY": "🇨🇳", "DINERS": "🎫", "MAESTRO": "🏢",
+    "VISA": "V", "MASTERCARD": "M", "AMEX": "A", "DISCOVER": "D",
+    "JCB": "J", "UNIONPAY": "U", "DINERS": "Di", "MAESTRO": "Ma",
     # type
-    "PREPAID": "🪙", "DEBIT": "🏧", "CREDIT": "💠", "COMMERCIAL": "🏢", "CORPORATE": "🏭",
+    "PREPAID": "🪙", "DEBIT": "🏧", "CREDIT": "💳", "COMMERCIAL": "🏢", "CORPORATE": "🏭",
     # level
-    "CLASSIC": "📗", "GOLD": "🥇", "PLATINUM": "💎", "SIGNATURE": "🖋️",
-    "INFINITE": "♾️", "WORLD": "🌍", "WORLD_ELITE": "👑",
+    "CLASSIC": "C", "GOLD": "🥇", "PLATINUM": "💎", "SIGNATURE": "S",
+    "INFINITE": "∞", "WORLD": "W", "WORLD_ELITE": "👑",
     # canary
-    "CANARY_PASS": "🐤", "CANARY_DEGRADED": "🐣", "CANARY_FAIL": "💀🐤",
+    "CANARY_PASS": "✅", "CANARY_DEGRADED": "⚠️", "CANARY_FAIL": "❌",
     # gate
     "GATE_ACTIVE": "🟢", "GATE_DRAINING": "🟡", "GATE_SHADOW": "👻",
     "GATE_QUARANTINED": "🟠", "GATE_DISABLED": "🔴", "GATE_RETIRED": "⚫",

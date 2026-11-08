@@ -79,20 +79,29 @@ def main_menu(admin: bool, miniapp_url: str = "") -> ReplyKeyboardMarkup:
 
 
 def dashboard_kb(admin: bool, miniapp_url: str = "") -> InlineKeyboardMarkup:
-    rows: list[list[InlineKeyboardButton]] = [
+    """Inline keyboard for instant button responses - Mini App prominent at top."""
+    rows: list[list[InlineKeyboardButton]] = []
+    
+    # Mini App button at the top if HTTPS URL available
+    if miniapp_url and miniapp_url.lower().startswith("https://"):
+        from aiogram.types import WebAppInfo
+        rows.append([
+            InlineKeyboardButton(text="📱 Open Mini App", web_app=WebAppInfo(url=miniapp_url))
+        ])
+    
+    # Main actions in 2-column grid
+    rows.extend([
         [_btn("🃏 BIN Lookup", "flow:bin"), _btn("⚡ Live Check", "flow:check")],
         [_btn("📦 Bulk / CSV", "flow:bulk"), _btn("📊 Status", "flow:status")],
         [_btn("🐞 Fix Record", "flow:fix"), _btn("🔒 Premium", "flow:premium")],
-        [_btn("👥 Refer", "flow:refer")],
-    ]
+    ])
+    
+    # Bottom row: Refer + Admin (if applicable)
+    bottom = [_btn("👥 Refer", "flow:refer")]
     if admin:
-        rows[-1].append(_btn("🎛 Admin", "flow:admin"))
-    if miniapp_url.lower().startswith("https://"):
-        from aiogram.types import WebAppInfo
-
-        rows.append(
-            [InlineKeyboardButton(text="📱 Open Mini App", web_app=WebAppInfo(url=miniapp_url))]
-        )
+        bottom.append(_btn("🎛 Admin", "flow:admin"))
+    rows.append(bottom)
+    
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
