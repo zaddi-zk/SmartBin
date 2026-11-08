@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SMARTBIN</title>
+<style>
+  :root{
+    --bg:#0a0a0b; --panel:#141416; --panel2:#18181b; --line:#26262b;
+    --text:#ececec; --dim:#a1a1a6; --accent:#d4af37; --accent2:#f0cf6a;
+    --success:#22c55e; --danger:#ef4444;
+  }
+  *{box-sizing:border-box}
+  html,body{width:100%;min-height:100vh;margin:0}
+  body{
+    background:
+      radial-gradient(900px 420px at 8% -12%,rgba(212,175,55,.10) 0%,transparent 60%),
+      radial-gradient(700px 380px at 110% 6%,rgba(240,207,106,.06) 0%,transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{width:100%;min-height:100vh;margin:0 auto;padding:20px 16px 40px}
+  header,.header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0 18px;border-bottom:1px solid var(--line)}
+  .avatar{
+    width:42px;height:42px;border-radius:50%;display:grid;place-items:center;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#151006;
+    font-weight:800;letter-spacing:.5px;box-shadow:0 0 22px rgba(212,175,55,.25)
+  }
+  .brand{font-weight:700;letter-spacing:1.4px}
+  .sub{color:var(--dim);font-size:12px;margin-top:2px}
+  .status-dot{height:8px;width:8px;border-radius:50%;background:var(--success);box-shadow:0 0 8px var(--success);flex:none}
+  .tabs{display:flex;gap:8px;margin:14px 0 16px}
+  .tab{
+    flex:1;text-align:center;padding:10px 12px;border:1px solid var(--line);
+    border-radius:10px;background:var(--panel);color:var(--dim);cursor:pointer;
+    font-size:12px;letter-spacing:1px;text-transform:uppercase;transition:color .15s,border-color .15s
+  }
+  .tab.active{color:#151006;background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;font-weight:700}
+  .panel,.card{
+    background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;
+    box-shadow:0 8px 24px rgba(0,0,0,.35);margin-bottom:16px
+  }
+  .label{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:block}
+  .row{display:flex;gap:10px}
+  .input-group{background:#0e0e10;border:1px solid var(--line);border-radius:8px;padding:4px 4px 4px 12px;display:flex;gap:8px;align-items:center;flex:1}
+  input,textarea{
+    flex:1;background:transparent;border:0;color:var(--text);padding:10px 0;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:15px;outline:none;resize:none
+  }
+  input::placeholder{color:#6b6b72}
+  button,.btn{
+    border:0;border-radius:8px;padding:12px 18px;font:inherit;font-weight:700;letter-spacing:.4px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));color:#151006;cursor:pointer;
+    transition:transform .1s,opacity .2s
+  }
+  button:active,.btn:active{transform:scale(.98);opacity:.9}
+  button.ghost{background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  pre.card,.result-block{
+    margin:14px 0 0;padding:14px;border-radius:8px;background:#0e0e10;
+    border:1px solid var(--line);overflow:auto;font-size:12.5px;line-height:1.6;
+    white-space:pre;color:#c9c9cf;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace
+  }
+  .meta-row{display:flex;justify-content:space-between;margin-top:12px;padding-top:12px;border-top:1px solid var(--line);color:var(--dim);font-size:12px}
+  .stat-good{color:var(--success)} .stat-bad{color:var(--danger)}
+  .hint{color:var(--dim);font-size:12px;margin-top:10px;line-height:1.5}
+  .err{color:var(--danger);font-size:13px;margin-top:10px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:4px}
+  .stat{background:#0e0e10;border:1px solid var(--line);border-radius:8px;padding:12px}
+  .stat .k{color:var(--dim);font-size:11px;letter-spacing:.8px;text-transform:uppercase}
+  .stat .v{font-size:19px;margin-top:6px;font-weight:700;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .gates{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+  .gate{display:flex;justify-content:space-between;gap:8px;background:#0e0e10;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .up{color:var(--success)} .down{color:var(--danger)}
+  footer{color:var(--dim);font-size:11px;text-align:center;margin-top:20px;letter-spacing:.5px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div style="display:flex;align-items:center;gap:12px">
+      <div class="avatar">SB</div>
+      <div>
+        <div class="brand">SMARTBIN</div>
+        <div class="sub">card intelligence · v1.0.0</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;color:var(--dim);font-size:11px;letter-spacing:1px">
+      <span class="status-dot" id="dot"></span>
+      <span id="net">ONLINE</span>
+    </div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab active" data-screen="lookup">LOOKUP</div>
+    <div class="tab" data-screen="status">STATUS</div>
+  </div>
+
+  <section id="screen-lookup" class="panel">
+    <span class="label">BIN lookup</span>
+    <div class="row">
+      <div class="input-group">
+        <input id="bin" inputmode="numeric" autocomplete="off" placeholder="6 or 8 digit BIN">
+      </div>
+      <button id="go">Lookup</button>
+    </div>
+    <div class="hint">Cache-first. Unsourced fields render UNKNOWN. Confidence below 60% renders LOW-CONF.</div>
+    <div id="lookup-error" class="err hidden"></div>
+    <pre id="card" class="card hidden"></pre>
+  </section>
+
+  <section id="screen-status" class="panel hidden">
+    <div class="grid">
+      <div class="stat"><div class="k">Uptime</div><div class="v" id="s-uptime">--</div></div>
+      <div class="stat"><div class="k">Users</div><div class="v" id="s-users">--</div></div>
+      <div class="stat"><div class="k">Checks today</div><div class="v" id="s-checks">--</div></div>
+      <div class="stat"><div class="k">Cache depth</div><div class="v" id="s-cache">--</div></div>
+      <div class="stat"><div class="k">Latency p50</div><div class="v" id="s-p50">--</div></div>
+      <div class="stat"><div class="k">Latency p95</div><div class="v" id="s-p95">--</div></div>
+    </div>
+    <div class="gates" id="gates"></div>
+    <div class="hint">Auto-refresh every 30s. Gate identity is private.</div>
+    <div id="status-error" class="err hidden"></div>
+  </section>
+
+  <footer>SMARTBIN v1.0.0 · cache · <span id="today">--</span></footer>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function readInitData() {
+  if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData) {
+    return window.Telegram.WebApp.initData;
+  }
+  const hash = new URLSearchParams(location.hash.slice(1));
+  const fromHash = hash.get('tgWebAppData');
+  if (fromHash) return fromHash;
+  return new URLSearchParams(location.search).get('initData') || '';
+}
+const initData = readInitData();
+
+function conf(field, confs) {
+  const value = Number((confs || {})[field] || 0);
+  return value;
+}
+function shown(value, c) {
+  const text = String(value || '').trim();
+  if (!text || text.toUpperCase() === 'UNKNOWN') return 'UNKNOWN';
+  return c < 60 ? text + ' LOW-CONF' : text;
+}
+function yes(v) { return Number(v || 0) ? 'YES' : 'NO'; }
+
+function renderCard(d) {
+  const confs = d.field_conf || {};
+  const bank = shown(d.bank, conf('bank', confs));
+  const iso = String(d.iso2 || '').toUpperCase();
+  const country = `${iso ? iso + ' · ' : ''}${d.country || 'UNKNOWN'}  CUR ${String(d.currency || 'UNKNOWN').toUpperCase()}`;
+  const twofa = d.twofa || 'UNKNOWN';
+  let note = '';
+  if (twofa === 'NON-VBV*') note = ' (single-gate)';
+  else if (twofa === 'NON-VBV') note = ' (two-gate)';
+  else if (twofa === 'LOW-CONF') note = ' (1 read)';
+  const sources = (d.sources || []).join(', ') || 'none';
+  const cp = (f) => {
+    const v = conf(f, confs);
+    return `${f} ${Math.round(v)}%${v < 60 ? '(LOW-CONF)' : ''}`;
+  };
+  const lines = [
+    `BIN ${d.bin}  ${d.brand || 'UNKNOWN'}  ${d.level || 'UNKNOWN'}`,
+    `BANK         ${bank}`,
+    `COUNTRY      ${country}`,
+    `PHONE        ${String(d.phone || '').padEnd(22)} SITE ${d.site || ''}`.trimEnd(),
+    `PREPAID      ${yes(d.prepaid)}   COMMERCIAL ${yes(d.commercial)}   AVS ${yes(d.avs)}`,
+    `CARD         ${d.card_length || 16}-digit ${Number(d.luhn || 0) ? 'Luhn' : 'NO-LUHN'}`,
+    `BIN AGE      ${d.bin_age || 0}y   SAMPLE ${d.sample_size || 0}   VERIFIED ${(d.verified_utc || 'UNKNOWN').slice(0, 10)}`,
+    `DOB/SSN/MMN  ${d.dob ? '1' : ''}/${d.ssn ? '1' : ''}/${d.mmn ? '1' : ''}    (1 = commonly requested on challenge)`,
+    `2FA          ${twofa}${note}  conf ${Math.round(d.twofa_conf || 0)}  reads ${d.twofa_reads || 0}`,
+    `SOURCES      ${sources}`,
+    `CONF         ${cp('bank')} · ${cp('level')} · ${cp('brand')}`,
+  ];
+  if (d.watermark) lines.push('-- @SmartBin_Bot');
+  lines.push(`SMARTBIN v${d.version || '1.0.0'} · cache · ${d.date || ''}`);
+  return lines.join('\n');
+}
+
+async function lookup() {
+  const raw = $('bin').value.trim();
+  const err = $('lookup-error');
+  const card = $('card');
+  err.classList.add('hidden');
+  card.classList.add('hidden');
+  if (!/^\d{6}(\d{2})?$/.test(raw)) {
+    err.textContent = 'BIN must be 6 or 8 digits.';
+    err.classList.remove('hidden');
+    return;
+  }
+  try {
+    const res = await fetch('/api/bin?bin=' + encodeURIComponent(raw), {
+      headers: { 'X-Telegram-Init-Data': initData }
+    });
+    if (res.status === 401) throw new Error('Open this Mini App from Telegram (initData required).');
+    if (!res.ok) throw new Error('Lookup failed (' + res.status + ').');
+    const data = await res.json();
+    card.textContent = renderCard(data);
+    card.classList.remove('hidden');
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+async function loadStatus() {
+  const err = $('status-error');
+  err.classList.add('hidden');
+  try {
+    const res = await fetch('/api/status', {
+      headers: { 'X-Telegram-Init-Data': initData }
+    });
+    if (res.status === 401) throw new Error('Open this Mini App from Telegram (initData required).');
+    if (!res.ok) throw new Error('Status failed (' + res.status + ').');
+    const d = await res.json();
+    $('s-uptime').textContent = d.uptime;
+    $('s-users').textContent = d.users;
+    $('s-checks').textContent = d.checks_today;
+    $('s-cache').textContent = d.cache_depth;
+    $('s-p50').textContent = d.p50 + 'ms';
+    $('s-p95').textContent = d.p95 + 'ms';
+    $('today').textContent = d.date;
+    const gates = $('gates');
+    gates.innerHTML = '';
+    (d.gates || []).forEach((g) => {
+      const el = document.createElement('div');
+      el.className = 'gate';
+      const healthy = Number(g.enabled) && Number(g.window_state) === 1;
+      const canary = Number(g.window_total) ? `${g.window_pass}/${g.window_total}` : `${g.pass_rate}%`;
+      el.innerHTML = `<span>${healthy ? '🟢' : '🔴'} ${g.label}</span><span class="${healthy ? 'up' : 'down'}">${healthy ? 'HEALTHY' : 'DEGRADED'}</span><span>canary ${canary}</span><span>p50 ${g.p50}ms / p95 ${g.p95}ms</span>`;
+      gates.appendChild(el);
+    });
+    const routing = document.createElement('div');
+    routing.className = 'hint';
+    routing.textContent = 'Routing: Auto-Route · ISO2 first · canary-gated';
+    gates.appendChild(routing);
+    const healthyAll = (d.gates || []).length > 0 && (d.gates || []).every((g) => Number(g.enabled) && Number(g.window_state) === 1);
+    $('dot').style.background = healthyAll ? 'var(--success)' : '#f5c451';
+    $('dot').style.boxShadow = healthyAll ? '0 0 8px var(--success)' : '0 0 8px #f5c451';
+    $('net').textContent = healthyAll ? 'ONLINE' : 'DEGRADED';
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+  }
+}
+
+document.querySelectorAll('.tab').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
+    tab.classList.add('active');
+    const screen = tab.dataset.screen;
+    $('screen-lookup').classList.toggle('hidden', screen !== 'lookup');
+    $('screen-status').classList.toggle('hidden', screen !== 'status');
+    if (screen === 'status') loadStatus();
+  });
+});
+$('go').addEventListener('click', lookup);
+$('bin').addEventListener('keydown', (e) => { if (e.key === 'Enter') lookup(); });
+loadStatus();
+setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>
