@@ -49,6 +49,23 @@ async def menu(message: Message, runtime) -> None:
     await send_menu(message, runtime)
 
 
+@router.message(F.text == "📱 Mini App")
+async def open_miniapp(message: Message, state: FSMContext, runtime) -> None:
+    """Open the Mini App."""
+    await state.clear()
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🚀 Launch Mini App", web_app=WebAppInfo(url=runtime.config.miniapp_base))],
+        [InlineKeyboardButton(text="✖ Close", callback_data="flow:menu")]
+    ])
+    await message.answer(
+        "<b>📱 SMARTBIN Mini App</b>\n"
+        "<blockquote>Advanced BIN lookup, real-time status, and your referral link.\n\n"
+        "Tap below to launch!</blockquote>",
+        reply_markup=kb
+    )
+
+
 @router.message(F.text == ui.BTN_REFER)
 async def refer(message: Message, state: FSMContext, runtime) -> None:
     """Show referral link with 5-check bonus for both parties."""
@@ -57,14 +74,15 @@ async def refer(message: Message, state: FSMContext, runtime) -> None:
     bot_username = (await runtime.bot.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     text = (
-        "<b>👥 Refer friends</b>\n"
-        "<blockquote>Share your link. When someone joins via your link, you both get 5 free checks.</blockquote>\n"
-        f"<pre>{ref_link}</pre>\n"
-        "<i>Tap Copy to share</i>"
+        "<b>👥 Invite a friend, get rewarded!</b>\n"
+        "<blockquote>🎁 You both get <b>5 free checks</b> when they join!\n\n"
+        "Just share your link below 👇</blockquote>"
     )
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CopyTextButton
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Copy Link", copy_text=CopyTextButton(text=ref_link))]
+        [InlineKeyboardButton(text="📋 Copy My Link", copy_text=CopyTextButton(text=ref_link))],
+        [InlineKeyboardButton(text="📱 Open Mini App", web_app={"url": runtime.config.miniapp_base})],
+        [InlineKeyboardButton(text="🏠 Back to Menu", callback_data="flow:menu")]
     ])
     await message.answer(text, reply_markup=kb)
 

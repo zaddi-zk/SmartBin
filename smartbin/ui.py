@@ -64,7 +64,9 @@ def main_menu(admin: bool, miniapp_url: str = "") -> ReplyKeyboardMarkup:
         [KeyboardButton(text=BTN_BULK), KeyboardButton(text=BTN_STATUS)],
         [KeyboardButton(text=BTN_FIX), KeyboardButton(text=BTN_PREMIUM)],
     ]
-    last = [KeyboardButton(text=BTN_REFER)]
+    # Mini App button first, then Refer, then Admin (if applicable)
+    last = [KeyboardButton(text="📱 Mini App")]
+    last.append(KeyboardButton(text=BTN_REFER))
     if admin:
         last.append(KeyboardButton(text=BTN_ADMIN))
     rows.append(last)
