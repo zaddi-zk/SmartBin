@@ -187,7 +187,7 @@ def check_result_block(
 
     # Fleet line (only if n >= 5)
     lines = [
-        f"SMARTBIN ⚡ LIVE CHECK",
+        f"SMARTBIN ⚡ CHECK CARD",
         verdict_line,
         card_line,
         bin_line,

@@ -216,7 +216,7 @@ async def kb_bin(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text == ui.BTN_CHECK)
+@router.message(F.text.in_({ui.BTN_CHECK, ui.BTN_CHECK_LEGACY}))
 async def kb_check(message: Message, state: FSMContext) -> None:
     await state.set_state(Flow.check)
     await message.answer(

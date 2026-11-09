@@ -31,7 +31,8 @@ FIELD_LABELS = {
 
 # Reply-keyboard labels. Keep them short so the 2-column grid stays even.
 BTN_BIN = "🃏 BIN Lookup"
-BTN_CHECK = "⚡ Live Check"
+BTN_CHECK = "⚡ Check Card"
+BTN_CHECK_LEGACY = "⚡ Live Check"
 BTN_BULK = "📦 Bulk / CSV"
 BTN_STATUS = "📊 Status"
 BTN_FIX = "🐞 Fix Record"
@@ -40,7 +41,7 @@ BTN_REFER = "👥 Refer"
 BTN_ADMIN = "🎛 Admin Panel"
 
 BUTTON_LABELS = {
-    BTN_BIN, BTN_CHECK, BTN_BULK, BTN_STATUS,
+    BTN_BIN, BTN_CHECK, BTN_CHECK_LEGACY, BTN_BULK, BTN_STATUS,
     BTN_FIX, BTN_PREMIUM, BTN_REFER, BTN_ADMIN,
 }
 
@@ -91,7 +92,7 @@ def dashboard_kb(admin: bool, miniapp_url: str = "") -> InlineKeyboardMarkup:
     
     # Main actions in 2-column grid
     rows.extend([
-        [_btn("🃏 BIN Lookup", "flow:bin"), _btn("⚡ Live Check", "flow:check")],
+        [_btn("🃏 BIN Lookup", "flow:bin"), _btn("⚡ Check Card", "flow:check")],
         [_btn("📦 Bulk / CSV", "flow:bulk"), _btn("📊 Status", "flow:status")],
         [_btn("🐞 Fix Record", "flow:fix"), _btn("🔒 Premium", "flow:premium")],
     ])
@@ -112,7 +113,7 @@ def menu_text(config: Any, user: Any = None) -> str:
         "<blockquote>Card intelligence · cache-first metadata · measured 2FA · live verdicts</blockquote>",
         "",
         "🃏  <b>BIN Lookup</b> — metadata, sources, 2FA",
-        "⚡  <b>Live Check</b> — auth-and-void verdict",
+        "⚡  <b>Check Card</b> — auth-and-void verdict",
         "📦  <b>Bulk / CSV</b> — batch checks and export",
         "📊  <b>Status</b> — engine health and latency",
         "🐞  <b>Fix Record</b> — corrections earn credits",
@@ -158,7 +159,7 @@ def bin_invalid() -> str:
 def check_prompt(prefix: str = "") -> str:
     hint = f" It must start with <code>{html.escape(prefix)}</code>." if prefix else ""
     return (
-        "<b>⚡ Live Check</b>\n"
+        "<b>⚡ Check Card</b>\n"
         f"<blockquote>Send the card as <code>number|MM|YY|CVV</code>.{hint} "
         "I show a confirmation before any dispatch.</blockquote>\n"
         "Example  <code>4242424242424242|12|2030|123</code>"

@@ -44,7 +44,7 @@ One line per autonomous choice. The laws in AGENTS.md win over convenience.
 - Handler errors are logged as one structured `event=handler_failed` line; aiogram's default traceback logger is replaced so transient network resets never dump tracebacks.
 - The Mini App menu button is only set when `MINIAPP_BASE` is HTTPS; non-HTTPS bases log `event=menu_skipped` instead of a failing Telegram call.
 - Primary UX is button-first: every reply-keyboard button opens a guided FSM prompt, then the user sends the BIN, card, batch, or correction value. Slash commands remain as power-user aliases.
-- The reply keyboard is a fixed 2-column grid ordered by frequency: BIN Lookup / Live Check, Bulk / Status, Fix / Premium, Play (+ Admin for the admin). Inline dashboard mirrors the same order.
+- The reply keyboard is a fixed 2-column grid ordered by frequency: BIN Lookup / Check Card, Bulk / Status, Fix / Premium, Play (+ Admin for the admin). Inline dashboard mirrors the same order.
 - Every live check shows a masked confirmation card with test/live mode before dispatch; nothing hits a gate until the user taps Run check.
 - Correction is fully guided: BIN -> inline field picker -> value -> queued confirmation. `/correct bin field value` still works.
 - Idle text is auto-detected: 6/8 digits run a BIN lookup, card-shaped text opens the check confirmation, and multi-line card text opens a bulk confirmation.

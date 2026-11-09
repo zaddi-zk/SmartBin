@@ -3,7 +3,7 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 import ui
 from handlers.actions import send_menu
@@ -70,7 +70,23 @@ async def open_miniapp(message: Message, state: FSMContext, runtime) -> None:
 async def refer(message: Message, state: FSMContext, runtime) -> None:
     """Show referral link with 5-check bonus for both parties."""
     await state.clear()
-    user_id = message.from_user.id
+    text, kb = await _refer_payload(runtime, message.from_user.id)
+    await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "flow:refer")
+async def refer_callback(
+    callback: CallbackQuery, state: FSMContext, runtime
+) -> None:
+    """Inline Refer button: same payload as the reply-keyboard button."""
+    await state.clear()
+    text, kb = await _refer_payload(runtime, callback.from_user.id)
+    await callback.answer()
+    if callback.message is not None:
+        await callback.message.answer(text, reply_markup=kb)
+
+
+async def _refer_payload(runtime, user_id: int):
     bot_username = (await runtime.bot.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}"
     text = (
@@ -84,7 +100,7 @@ async def refer(message: Message, state: FSMContext, runtime) -> None:
         [InlineKeyboardButton(text="📱 Open Mini App", web_app={"url": runtime.config.miniapp_base})],
         [InlineKeyboardButton(text="🏠 Back to Menu", callback_data="flow:menu")]
     ])
-    await message.answer(text, reply_markup=kb)
+    return text, kb
 
 
 @router.message(F.text == ui.BTN_ADMIN)

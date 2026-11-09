@@ -74,7 +74,7 @@ The reply keyboard is the main interface. Tap a button, then send the input:
 | Button | What happens |
 | --- | --- |
 | 🃏 BIN Lookup | Prompt for a 6/8 digit BIN, then render the card with inline actions |
-| ⚡ Live Check | Prompt for `number\|MM\|YY\|CVV`, show a masked confirmation, then dispatch |
+| ⚡ Check Card | Prompt for `number\|MM\|YY\|CVV`, show a masked confirmation, then dispatch |
 | 📦 Bulk / CSV | Prompt for one card per line, confirm, then return fixed-width results and CSV |
 | 📊 Status | Live uptime, latency, cache depth, and anonymized gate telemetry |
 | 🐞 Fix Record | BIN -> field picker -> value -> queued correction |
