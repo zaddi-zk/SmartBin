@@ -110,7 +110,7 @@ async def gates_cmd(message: Message, runtime) -> None:
             )
         )
     lines.append("ROUTING      auto-route · ISO2 first")
-    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {utc_date()} · @SmartBin_Bot")
+    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {utc_date()} · @SmartBlN_Bot")
     await message.answer(
         "<pre>" + "\n".join(lines) + "</pre>",
         parse_mode="HTML",
@@ -155,7 +155,7 @@ async def send_why(message: Message, runtime, bin_arg: str, user: Any = None) ->
         f"2FA          {record.twofa}  conf {int(round(record.twofa_conf))}  "
         f"reads {record.twofa_reads}  last {record.last_twofa_utc or 'never'}"
     )
-    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {utc_date()} · @SmartBin_Bot")
+    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {utc_date()} · @SmartBlN_Bot")
     await message.answer(
         "<pre>" + "\n".join(lines) + "</pre>",
         parse_mode="HTML",

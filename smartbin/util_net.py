@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 import httpx
 
 DEFAULT_HEADERS = {
-    "User-Agent": "SMARTBIN/1.0.0 (+https://t.me/SmartBin_Bot)",
+    "User-Agent": "SMARTBIN/1.0.0 (+https://t.me/SmartBlN_Bot)",
     "Accept": "application/json",
 }
 

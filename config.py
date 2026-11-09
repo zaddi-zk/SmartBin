@@ -7,7 +7,7 @@ from pathlib import Path
 DISPLAY_VERSION = "7.1.0"
 
 _ENV_KEYS = (
-    "BOT_TOKEN ADMIN_ID DB_PATH DATABASE_URL MINIAPP_PORT MINIAPP_BASE STRIPE_API_KEY "
+    "BOT_TOKEN ADMIN_ID DB_PATH DATABASE_URL MINIAPP_PORT PORT MINIAPP_BASE STRIPE_API_KEY "
     "STRIPE_TEST_MODE CANARY_NONVBV CANARY_VBV CANARY_DEAD "
     "FREE_BINS_PER_DAY FREE_CHECKS_PER_DAY STARS_DAY STARS_MONTH "
     "STARS_CREDITS_500 CORRECTION_REWARD LRU_SIZE BIN_CACHE_DAYS "
@@ -104,7 +104,7 @@ class Config:
             admin_id=_int(env, "ADMIN_ID", 0),
             db_path=env.get("DB_PATH", "smartbin.db"),
             database_url=env.get("DATABASE_URL", "").strip(),
-            miniapp_port=_int(env, "MINIAPP_PORT", 8877),
+            miniapp_port=_int(env, "MINIAPP_PORT", _int(env, "PORT", 8877)),
             miniapp_base=env.get("MINIAPP_BASE", "https://smartbin-eurr.onrender.com"),
             stripe_api_key=env.get("STRIPE_API_KEY", ""),
             stripe_test_mode=_bool(env, "STRIPE_TEST_MODE", True),

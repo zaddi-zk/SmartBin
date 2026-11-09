@@ -88,14 +88,14 @@ Every check confirms the masked card before dispatch, and every path writes a `c
 ## Commands
 
 - `/start` main menu, premium emoji header, live dice, admin-only button
-- `/bin <6 or 8 digits>` BIN card; inline mode `@SmartBin_Bot <bin>`
+- `/bin <6 or 8 digits>` BIN card; inline mode `@SmartBlN_Bot <bin>`
 - `/check <number|MM|YY|CVV>` full check state machine
 - `/bulk` paste cards, get fixed-width output plus CSV
 - `/status`, `/why <bin>`, `/gates`, `/correct <bin> <field> <value>`
 - `/premium` Stars store (day, monthly subscription, 500 credits)
 - `/admin` dashboard, proxies, gates, corrections, credits, broadcast, refunds
 
-Free results carry `-- @SmartBin_Bot`. Data blocks are fixed-width `<pre>`, no emoji or bold.
+Free results carry `-- @SmartBlN_Bot`. Data blocks are fixed-width `<pre>`, no emoji or bold.
 Unknown fields render `UNKNOWN`; fields below 60% confidence render `NAME LOW-CONF`.
 
 Check verdicts lead with a status banner outside the data block: `🟢 LIVE`, `🔴 DEAD`, or

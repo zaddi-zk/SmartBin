@@ -9,7 +9,7 @@ from models import BinRecord, CheckOutcome, utcnow
 
 DISPLAY_VERSION = "7.1.0"
 FOOTER_PREFIX = "SMARTBIN"
-WATERMARK = "-- @SmartBin_Bot"
+WATERMARK = "-- @SmartBlN_Bot"
 
 # §3.3 EMOJI DESIGN SYSTEM — one glyph per concept, codes rule
 # Emoji-compatible across all devices (iOS, Android, Telegram)
@@ -222,7 +222,7 @@ def check_result_block(
         lines.append(f"🩸 {slang} — live")
 
     # Footer
-    footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · {now.strftime('%Y-%m-%d')} · @SmartBin_Bot"
+    footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
     lines.append(footer)
 
     return "<pre>" + "\n".join(lines) + "</pre>"
@@ -299,7 +299,7 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     elif fleet_n > 0:
         lines.append(f"COLD BIN n={fleet_n}")
 
-    footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBin_Bot"
+    footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
     lines.append(footer)
 
     if free:
@@ -397,7 +397,7 @@ def verdict_block(
     ]
     if free:
         lines.append(WATERMARK)
-    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBin_Bot")
+    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot")
     return "<pre>" + "\n".join(lines) + "</pre>"
 
 
@@ -447,7 +447,7 @@ def status_block(stats: Mapping[str, Any], free: bool = False, now: datetime | N
         lines.append(f"  {date} {version} {desc}")
     if free:
         lines.append(WATERMARK)
-    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBin_Bot")
+    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot")
     return "<pre>" + "\n".join(lines) + "</pre>"
 
 

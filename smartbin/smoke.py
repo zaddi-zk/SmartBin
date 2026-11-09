@@ -181,7 +181,7 @@ async def run() -> int:
 
         pre_body = seed_text.split("<pre>", 1)[1].split("</pre>", 1)[0]
         check(not _re.search(r"[\U0001F300-\U0001FAFF]", pre_body), "no_emoji_in_data")
-        check("-- @SmartBin_Bot" in seed_text, "watermark_exact")
+        check("-- @SmartBlN_Bot" in seed_text, "watermark_exact")
 
         # Mini App: unsigned 401, signed 200
         runner = await start_server(runtime, host="127.0.0.1", port=0)

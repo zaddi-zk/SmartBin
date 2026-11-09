@@ -174,7 +174,7 @@ class GuidedFlowTest(unittest.TestCase):
             self.assertIn("gate-1", verdict)
             self.assertNotIn("stripe", verdict.lower())
             self.assertIn("auto-route", verdict)
-            self.assertIn("-- @SmartBin_Bot", verdict)
+            self.assertIn("-- @SmartBlN_Bot", verdict)
 
             # Status
             await feed(update(message=_message(uid, "📊 Status")))
