@@ -325,6 +325,21 @@ def gate_health_line(health: Mapping[str, Any] | None, label: str = "gate-1") ->
     return f"{icon} {label} {state} · canary {rate}% · p50 {p50}ms"
 
 
+def _action_note(outcome: CheckOutcome) -> str:
+    """Human explanation for gate failures that are not card verdicts."""
+    if outcome.action == "canary-window-failed":
+        return "GATEWAY NOT READY: canary window not clean (processor rejected probe)"
+    if outcome.action == "no-proxy":
+        return "NO PROXY: proxy pool empty, check not dispatched"
+    if (
+        outcome.verdict == "INCONCLUSIVE"
+        and not outcome.decline_code
+        and not outcome.raw_code
+    ):
+        return "GATEWAY ERROR: no response from processor (raw card API blocked?)"
+    return outcome.note or "-"
+
+
 def verdict_header(
     outcome: CheckOutcome,
     health: Mapping[str, Any] | None = None,
@@ -332,10 +347,18 @@ def verdict_header(
 ) -> str:
     """Live status banner above the fixed-width block."""
     verdict = outcome.verdict
-    if outcome.action == "no-proxy":
+    if outcome.action == "canary-window-failed":
+        head = "🟠 <b>GATEWAY NOT READY</b> · <code>canary window not clean</code>"
+    elif outcome.action == "no-proxy":
         head = "🟡 <b>CORE DEGRADED</b> · <code>no proxy</code>"
     elif outcome.action == "core-degraded":
         head = "🟡 <b>CORE DEGRADED</b> · <code>no healthy gate</code>"
+    elif (
+        verdict == "INCONCLUSIVE"
+        and not outcome.decline_code
+        and not outcome.raw_code
+    ):
+        head = "🟠 <b>GATEWAY ERROR</b> · <code>check not performed</code>"
     elif verdict in ("INCONCLUSIVE", "AMBIGUOUS"):
         icon = "🟡"
         head = f"{icon} <b>{verdict}</b> · <code>{outcome.action or '-'}</code>"
@@ -393,7 +416,7 @@ def verdict_block(
         f"LATENCY      {outcome.latency_ms}ms",
         f"2FA READ     {outcome.twofa_read or '-'}",
         f"ACS HOST     {outcome.acs_host or '-'}",
-        f"NOTE         {outcome.note or '-'}",
+        f"NOTE         {_action_note(outcome)}",
     ]
     if free:
         lines.append(WATERMARK)
