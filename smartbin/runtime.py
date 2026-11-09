@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from config import Config
@@ -37,9 +38,29 @@ class Runtime:
 RUNTIME: Runtime | None = None
 
 
+async def _seed_proxies(db: DB, path: str = "us_proxies.txt") -> int:
+    """Load scraped proxies into the pool on boot. ON CONFLICT keeps it idempotent."""
+    p = Path(path)
+    if not p.exists():
+        return 0
+    added = 0
+    for line in p.read_text(encoding="utf-8").splitlines():
+        parts = line.strip().split()
+        if not parts or parts[0].startswith("#"):
+            continue
+        url = parts[0]
+        scope = parts[1] if len(parts) > 1 else "check"
+        country = parts[2].upper() if len(parts) > 2 else ""
+        note = " ".join(parts[3:])
+        await db.add_proxy(url, scope=scope, country=country, note=note)
+        added += 1
+    return added
+
+
 async def build_runtime(config: Config, offline: bool = False) -> Runtime:
     global RUNTIME
     db = await DB(config.db_path, database_url=config.database_url).init()
+    await _seed_proxies(db)
     sources = build_sources(offline=offline)
 
     async def source_proxy() -> str | None:
