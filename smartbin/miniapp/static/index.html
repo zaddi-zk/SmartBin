@@ -132,6 +132,7 @@
     <div class="grid">
       <div class="stat"><div class="k">Uptime</div><div class="v" id="s-uptime">--</div></div>
       <div class="stat"><div class="k">Users</div><div class="v" id="s-users">--</div></div>
+      <div class="stat"><div class="k">Monthly Users</div><div class="v" id="s-monthly">--</div></div>
       <div class="stat"><div class="k">Checks Today</div><div class="v" id="s-checks">--</div></div>
       <div class="stat"><div class="k">Cache</div><div class="v" id="s-cache">--</div></div>
       <div class="stat"><div class="k">P50</div><div class="v" id="s-p50">--</div></div>
@@ -280,6 +281,7 @@ async function loadStatus(){
     const d=await res.json();
     $('s-uptime').textContent=d.uptime;
     $('s-users').textContent=d.users;
+    $('s-monthly').textContent=d.monthly_users;
     $('s-checks').textContent=d.checks_today;
     $('s-cache').textContent=d.cache_depth;
     $('s-p50').textContent=d.p50+'ms';

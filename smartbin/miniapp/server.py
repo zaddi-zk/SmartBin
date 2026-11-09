@@ -108,6 +108,7 @@ async def status_json(runtime: Any) -> dict[str, Any]:
     return {
         "uptime": runtime.uptime(),
         "users": await db.count("users"),
+        "monthly_users": await db.monthly_users(),
         "checks_today": int(stats.get(f"day:{utc_date()}:checks", 0)),
         "cache_depth": runtime.store.depth(),
         "p50": int(percentile(latencies, 50)),
@@ -124,6 +125,27 @@ def _init_data(request: web.Request) -> str:
     return header or request.query.get("init_data", "")
 
 
+def _init_user(pairs: dict[str, Any]) -> dict[str, Any]:
+    try:
+        data = json.loads(pairs.get("user", "") or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+async def _touch_user(runtime: Any, pairs: dict[str, Any]) -> None:
+    """Record Mini App activity for monthly-active counting."""
+    data = _init_user(pairs)
+    user_id = data.get("id")
+    if not user_id:
+        return
+    await runtime.db.ensure_user(
+        int(user_id),
+        username=data.get("username") or "",
+        first_name=data.get("first_name") or "",
+    )
+
+
 def create_app(runtime: Any) -> web.Application:
     app = web.Application()
     app["runtime"] = runtime
@@ -134,8 +156,10 @@ def create_app(runtime: Any) -> web.Application:
         return web.FileResponse(STATIC)
 
     async def api_bin(request: web.Request) -> web.Response:
-        if verify_init_data(_init_data(request), runtime.config.bot_token) is None:
+        pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
+        await _touch_user(runtime, pairs)
         raw = request.query.get("bin", "")
         digits = "".join(c for c in raw if c.isdigit())
         if len(digits) not in (6, 8):
@@ -149,8 +173,10 @@ def create_app(runtime: Any) -> web.Application:
         return web.json_response(await status_json(runtime))
 
     async def api_reflink(request: web.Request) -> web.Response:
-        if verify_init_data(_init_data(request), runtime.config.bot_token) is None:
+        pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
+        await _touch_user(runtime, pairs)
         user_id = request.query.get("user_id", "")
         bot_username = (await runtime.bot.get_me()).username
         ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}" if user_id else ""

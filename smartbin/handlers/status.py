@@ -60,6 +60,7 @@ async def _stats(runtime) -> dict:
     return {
         "uptime": runtime.uptime(),
         "users": await db.count("users"),
+        "monthly_users": await db.monthly_users(),
         "premium": premium,
         "checks_today": checks_today,
         "cache_depth": runtime.store.depth(),

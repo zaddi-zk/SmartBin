@@ -68,6 +68,10 @@ async def migrate(sqlite_path: Path, database_url: str, dry_run: bool) -> None:
                     f"GREATEST(COALESCE((SELECT MAX({column}) FROM {table}), 0), 1), "
                     f"(SELECT COUNT(*) FROM {table}) > 0)"
                 )
+            await db.execute(
+                "UPDATE users SET last_seen_utc=joined_utc "
+                "WHERE COALESCE(last_seen_utc,'')='' AND COALESCE(joined_utc,'')<>''"
+            )
 
         print("\nFinal counts:")
         for table in TABLES:

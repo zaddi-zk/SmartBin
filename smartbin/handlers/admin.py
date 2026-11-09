@@ -87,7 +87,7 @@ async def dashboard(runtime) -> str:
     pending = await db.count("corrections", "status='pending'")
     return (
         "ADMIN DASHBOARD\n\n"
-        f"users          {await db.count('users')}\n"
+        f"users          {await db.count('users')}   monthly {await db.monthly_users()}\n"
         f"premium        {premium}\n"
         f"checks today   {int(stats.get('day:' + utc_date() + ':checks', 0))}\n"
         f"revenue        {revenue} XTR\n"

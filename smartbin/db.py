@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS users (
   username     TEXT DEFAULT '',
   first_name   TEXT DEFAULT '',
   joined_utc   TEXT DEFAULT '',
+  last_seen_utc TEXT DEFAULT '',             -- UTC timestamp of last interaction (monthly active)
   source_tag   TEXT DEFAULT '',              -- startapp/start deeplynk attribution. THE funnel.
   credits      INTEGER DEFAULT 0,
   premium_until TEXT DEFAULT '',             -- ISO; sub renewals extend via receipts
@@ -174,6 +175,7 @@ PG_SCHEMA = [
       username      TEXT DEFAULT '',
       first_name    TEXT DEFAULT '',
       joined_utc    TEXT DEFAULT '',
+      last_seen_utc TEXT DEFAULT '',
       source_tag    TEXT DEFAULT '',
       credits       INTEGER DEFAULT 0,
       premium_until TEXT DEFAULT '',
@@ -254,7 +256,7 @@ PG_SCHEMA = [
 ]
 
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Mapping
 
 import aiosqlite
@@ -328,17 +330,40 @@ class DB:
                 "INSERT INTO gates(name, kind, enabled) VALUES('stripe','stripe',1) "
                 "ON CONFLICT DO NOTHING"
             )
+            await self.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_utc TEXT DEFAULT ''"
+            )
+            await self.execute(
+                "UPDATE users SET last_seen_utc=joined_utc "
+                "WHERE COALESCE(last_seen_utc,'')='' AND COALESCE(joined_utc,'')<>''"
+            )
             return self
 
         self._conn = await aiosqlite.connect(self.path)
         self._conn.row_factory = aiosqlite.Row
         await self._conn.executescript(SCHEMA)
+        await self._migrate_sqlite()
         await self._conn.execute(
             "INSERT INTO gates(name, kind, enabled) VALUES('stripe','stripe',1) "
             "ON CONFLICT DO NOTHING"
         )
         await self._conn.commit()
         return self
+
+    async def _migrate_sqlite(self) -> None:
+        """Add columns introduced after the first release, in place."""
+        cur = await self._conn.execute("PRAGMA table_info(users)")
+        cols = {row[1] for row in await cur.fetchall()}
+        await cur.close()
+        if "last_seen_utc" not in cols:
+            await self._conn.execute(
+                "ALTER TABLE users ADD COLUMN last_seen_utc TEXT DEFAULT ''"
+            )
+        await self._conn.execute(
+            "UPDATE users SET last_seen_utc=joined_utc "
+            "WHERE COALESCE(last_seen_utc,'')='' AND COALESCE(joined_utc,'')<>''"
+        )
+        await self._conn.commit()
 
     async def close(self) -> None:
         if self._pool is not None:
@@ -484,9 +509,12 @@ class DB:
     ) -> Any:
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         await self.execute(
-            "INSERT INTO users(user_id, username, first_name, joined_utc, source_tag, quota_date) "
-            "VALUES (?,?,?,?,?,?) ON CONFLICT DO NOTHING",
-            (user_id, username, first_name, now, source_tag, today_utc()),
+            "INSERT INTO users(user_id, username, first_name, joined_utc, source_tag, quota_date, last_seen_utc) "
+            "VALUES (?,?,?,?,?,?,?) ON CONFLICT DO NOTHING",
+            (user_id, username, first_name, now, source_tag, today_utc(), now),
+        )
+        await self.execute(
+            "UPDATE users SET last_seen_utc=? WHERE user_id=?", (now, user_id)
         )
         if username or first_name:
             await self.execute(
@@ -504,6 +532,13 @@ class DB:
 
     async def get_user(self, user_id: int) -> Any:
         return await self.fetchone("SELECT * FROM users WHERE user_id=?", (user_id,))
+
+    async def monthly_users(self, days: int = 30) -> int:
+        """Users seen in the last N days (monthly active users)."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        return await self.count("users", "last_seen_utc >= ?", (cutoff,))
 
     async def reset_quota_if_needed(self, user_id: int) -> Any:
         row = await self.get_user(user_id)

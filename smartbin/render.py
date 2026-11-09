@@ -423,7 +423,7 @@ def status_block(stats: Mapping[str, Any], free: bool = False, now: datetime | N
     now = _now(now)
     lines = [
         f"UPTIME       {stats.get('uptime', 'UNKNOWN')}",
-        f"USERS        {stats.get('users', 0)}   PREMIUM {stats.get('premium', 0)}",
+        f"USERS        {stats.get('users', 0)}   PREMIUM {stats.get('premium', 0)}   MONTHLY {stats.get('monthly_users', 0)}",
         f"CHECKS       {stats.get('checks_today', 0)} today   CACHE {stats.get('cache_depth', 0)}",
         f"LATENCY      p50 {stats.get('p50', 0)}ms   p95 {stats.get('p95', 0)}ms",
         f"FUNNEL       start {stats.get('start', 0)} -> bin {stats.get('first_bin', 0)} -> check {stats.get('first_check', 0)} -> pay {stats.get('first_payment', 0)}",
