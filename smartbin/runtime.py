@@ -39,10 +39,11 @@ RUNTIME: Runtime | None = None
 
 
 async def _seed_proxies(db: DB, path: str = "us_proxies.txt") -> int:
-    """Load scraped proxies into the pool on boot. ON CONFLICT keeps it idempotent."""
+    """Sync scraped proxies into the pool on boot, pruning dead seed rows."""
     p = Path(path)
     if not p.exists():
         return 0
+    urls: set[str] = set()
     added = 0
     for line in p.read_text(encoding="utf-8").splitlines():
         parts = line.strip().split()
@@ -51,9 +52,18 @@ async def _seed_proxies(db: DB, path: str = "us_proxies.txt") -> int:
         url = parts[0]
         scope = parts[1] if len(parts) > 1 else "check"
         country = parts[2].upper() if len(parts) > 2 else ""
-        note = " ".join(parts[3:])
+        note = ("seed " + " ".join(parts[3:])).strip()
+        urls.add(url)
         await db.add_proxy(url, scope=scope, country=country, note=note)
+        await db.execute("UPDATE proxies SET enabled=1 WHERE url=?", (url,))
         added += 1
+    # Disable previously seeded rows that are no longer in the file.
+    rows = await db.fetchall("SELECT id, url, note FROM proxies")
+    for row in rows:
+        note = str(row["note"] or "")
+        seeded = note.startswith("seed") or note in ("fast", "medium", "slow")
+        if seeded and str(row["url"]) not in urls:
+            await db.update_proxy(int(row["id"]), enabled=0)
     return added
 
 
