@@ -9,6 +9,25 @@ from pathlib import Path
 from db import DB
 
 
+class _FakeBot:
+    def __init__(self, long_description: str = ""):
+        self.short: dict[str | None, str] = {}
+        self.long: dict[str | None, str] = {}
+        self._long_description = long_description
+
+    async def set_my_short_description(self, short_description="", language_code=None):
+        self.short[language_code] = short_description
+
+    async def get_my_description(self, language_code=None):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(description=self._long_description)
+
+    async def set_my_description(self, description="", language_code=None):
+        self.long[language_code] = description
+        self._long_description = description
+
+
 class MonthlyUsersTest(unittest.TestCase):
     def test_monthly_active_count(self):
         asyncio.run(self._run())
@@ -109,23 +128,31 @@ class MonthlyUsersTest(unittest.TestCase):
             async def monthly_users(self):
                 return 5746
 
-        class FakeBot:
-            def __init__(self):
-                self.short = None
-                self.long = None
-
-            async def set_my_short_description(self, short_description=""):
-                self.short = short_description
-
-            async def set_my_description(self, description=""):
-                self.long = description
-
-        bot = FakeBot()
+        bot = _FakeBot()
         runtime = SimpleNamespace(db=FakeDB())
         text = await update_description(bot, runtime)
         self.assertEqual(text, "5,746 monthly users")
-        self.assertEqual(bot.short, "5,746 monthly users")
-        self.assertEqual(bot.long, "5,746 monthly users")
+        # Short description is what appears directly under the bot name,
+        # including the English-language variant Telegram serves.
+        self.assertEqual(bot.short[None], "5,746 monthly users")
+        self.assertEqual(bot.short["en"], "5,746 monthly users")
+        # The long description must not be touched by the count updater.
+        self.assertEqual(bot.long, {})
+
+    def test_legacy_long_description_is_cleared(self):
+        asyncio.run(self._run_clear())
+
+    async def _run_clear(self):
+        from description import clear_legacy_description
+
+        bot = _FakeBot(long_description="5,746 monthly users")
+        await clear_legacy_description(bot)
+        self.assertEqual(bot.long.get(None), "")
+
+        # A real description is left untouched.
+        bot2 = _FakeBot(long_description="Hit /start for daily free access!")
+        await clear_legacy_description(bot2)
+        self.assertEqual(bot2.long, {})
 
 
 if __name__ == "__main__":
