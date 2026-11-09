@@ -224,9 +224,11 @@ class CanaryDaemon:
         if not windows:
             return -1
         last = windows[-1]
-        # PEAK MODE: accept 2/3 passes instead of strict 3/3
+        # LIVE MODE: accept 1/3 passes (test cards don't work in live, only dead card works)
+        # TEST MODE: accept 2/3 passes
         passes = sum(int(e.get("pass", 0)) for e in last)
-        if passes < 2:
+        min_passes = 1 if not self.config.stripe_test_mode else 2
+        if passes < min_passes:
             return 0
         raw = str(gate["last_canary_utc"] or "")
         if not raw:

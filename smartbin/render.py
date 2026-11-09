@@ -302,20 +302,22 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     type_line = "🏷️ TYPE    " + " · ".join(type_parts)
 
     lines = [
-        f"🧬 SMARTBIN BIN TELEMETRY",
-        f"🔢 BIN     {bin8}",
-        f"🏦 BANK    {bank} ☎ {phone[:7] if phone else ''}..." if phone else f"🏦 BANK    {bank}",
+        f"💎 <b>SMARTBIN BIN INTELLIGENCE</b>",
+        f"🔢 <code>{bin8}</code>",
+        f"🏦 <b>BANK</b>    {bank}" + (f" <code>☎ {phone[:7]}...</code>" if phone else ""),
         type_line,
-        f"📍 WORLD   🇺🇸 {_label(country)} · 💱 {currency} · {length} · 🧮 luhn",
-        f"🪙 PREPAID {'YES' if prepaid else 'NO'} · 🏢 COMMERCIAL {'YES' if commercial else 'NO'} · ATM DEBIT {'YES' if atm_debit else 'NO'}",
+        f"🌍 <b>REGION</b>  {'🇺🇸' if iso2 == 'US' else '🌐'} {_label(country)} <code>· 💱 {currency}</code>",
+        f"📊 <b>DETAILS</b> <code>{length} digits</code> · 🧮 <code>luhn ✓</code>",
+        f"💰 <b>TYPE</b>    PREPAID: <code>{'✅ YES' if prepaid else '❌ NO'}</code> · COMMERCIAL: <code>{'✅ YES' if commercial else '❌ NO'}</code> · ATM: <code>{'✅ YES' if atm_debit else '❌ NO'}</code>",
     ]
 
     if phone:
-        lines.append(f"☎ ISSUER  {phone} → tap-to-call")
+        lines.append(f"📞 <b>ISSUER</b>  <code>{phone}</code>")
     if site:
-        lines.append(f"🔗 SITE    {site}")
+        lines.append(f"🔗 <b>SITE</b>    <a href='{site}'>{site}</a>")
 
-    lines.append(f"🔐 2FA     {twofa_glyph} {_label(twofa)}{twofa_note} · reads {twofa_reads} · conf {twofa_conf}")
+    twofa_label = _label(twofa)
+    lines.append(f"🔐 <b>3DS</b>     {twofa_glyph} <code>{twofa_label}</code>{twofa_note} · <i>reads {twofa_reads}</i> · <i>conf {twofa_conf}%</i>")
 
     if fleet_n >= 5:
         fleet_line = f"📊 FLEET   {fleet_n} checks · {GLYPH['LIVE']}{fleet_approved} · {GLYPH['SOFT_DECLINE']}{fleet_soft} · {GLYPH['DEAD']}{fleet_hard} · last 2h ago"
@@ -369,12 +371,12 @@ def verdict_header(
     health: Mapping[str, Any] | None = None,
     gate_label: str = "gate-1",
 ) -> str:
-    """Live status banner above the fixed-width block."""
+    """Live status banner - pro carding style."""
     verdict = outcome.verdict
     if outcome.action == "canary-window-failed":
-        head = "🟠 <b>GATEWAY NOT READY</b> · <code>canary window not clean</code>"
+        head = "🟠 <b>GATEWAY NOT READY</b> · <code>canary window failed</code>"
     elif outcome.action == "no-proxy":
-        head = "🟡 <b>CORE DEGRADED</b> · <code>no proxy</code>"
+        head = "🟡 <b>CORE DEGRADED</b> · <code>proxy pool empty</code>"
     elif outcome.action == "core-degraded":
         head = "🟡 <b>CORE DEGRADED</b> · <code>no healthy gate</code>"
     elif (
@@ -382,19 +384,19 @@ def verdict_header(
         and not outcome.decline_code
         and not outcome.raw_code
     ):
-        head = "🟠 <b>GATEWAY ERROR</b> · <code>check not performed</code>"
+        head = "🟠 <b>GATEWAY ERROR</b> · <code>processor no response</code>"
     elif verdict in ("INCONCLUSIVE", "AMBIGUOUS"):
         icon = "🟡"
         head = f"{icon} <b>{verdict}</b> · <code>{outcome.action or '-'}</code>"
     elif verdict == "APPROVED":
         icon = "🟢"
-        head = f"{icon} <b>LIVE</b> · <b>APPROVED</b>"
+        head = f"{icon} <b>💳 LIVE</b> · <b>✅ APPROVED</b>"
     elif outcome.live:
         icon = "🟢"
-        head = f"{icon} <b>LIVE</b> · <b>{verdict}</b> · <code>{outcome.action or '-'}</code>"
+        head = f"{icon} <b>💳 LIVE</b> · <b>{verdict}</b> · <code>{outcome.action or '-'}</code>"
     else:
         icon = "🔴"
-        head = f"{icon} <b>DEAD</b> · <b>{verdict}</b> · <code>{outcome.action or '-'}</code>"
+        head = f"{icon} <b>💀 DEAD</b> · <b>{verdict}</b> · <code>{outcome.action or '-'}</code>"
     line = gate_health_line(health, gate_label)
     if line:
         head += f"\n<blockquote>{line}</blockquote>"
@@ -422,29 +424,37 @@ def verdict_block(
     now: datetime | None = None,
     gate_label: str = "gate-1",
 ) -> str:
-    """Legacy verdict_block for backwards compatibility."""
+    """Pro carding-style verdict block."""
     now = _now(now)
     masked = card.masked() if hasattr(card, "masked") else ""
     bin8 = getattr(card, "bin8", "") if card is not None else ""
     code = outcome.raw_code or outcome.decline_code or "-"
-    scope = "network" if outcome.raw_code else ("stripe" if outcome.decline_code else "-")
+    scope = "NETWORK" if outcome.raw_code else ("STRIPE" if outcome.decline_code else "-")
+    
+    # Live status with emoji
+    live_status = "✅ YES" if outcome.live else "❌ NO"
+    if outcome.verdict == "APPROVED":
+        live_status = "💎 LIVE"
+    elif outcome.verdict == "INCONCLUSIVE":
+        live_status = "🔍 UNKNOWN"
+    
     lines = [
-        f"VERDICT      {outcome.verdict}",
-        f"CARD         {masked or '-'}",
-        f"BIN          {bin8 or '-'}",
-        f"LIVE         {'YES' if outcome.live else 'NO'}",
-        f"ACTION       {outcome.action or '-'}",
-        f"CODE         {code} ({scope})",
-        f"GATE         {gate_label}",
-        f"ROUTE        auto-route · ISO2 first",
-        f"LATENCY      {outcome.latency_ms}ms",
-        f"2FA READ     {outcome.twofa_read or '-'}",
-        f"ACS HOST     {outcome.acs_host or '-'}",
-        f"NOTE         {_action_note(outcome)}",
+        f"<b>VERDICT</b>    <code>{outcome.verdict}</code>",
+        f"<b>CARD</b>       <code>{masked or '-'}</code>",
+        f"<b>BIN</b>        <code>{bin8 or '-'}</code>",
+        f"<b>LIVE</b>       {live_status}",
+        f"<b>ACTION</b>     <code>{outcome.action or '-'}</code>",
+        f"<b>CODE</b>       <code>{code}</code> (<i>{scope}</i>)",
+        f"<b>GATE</b>       <code>{gate_label}</code>",
+        f"<b>ROUTE</b>      auto-route · ISO2 first",
+        f"<b>LATENCY</b>    <code>{outcome.latency_ms}ms</code>",
+        f"<b>3DS READ</b>   <code>{outcome.twofa_read or '-'}</code>",
+        f"<b>ACS HOST</b>   <code>{outcome.acs_host or '-'}</code>",
+        f"<b>NOTE</b>       {_action_note(outcome)}",
     ]
     if free:
         lines.append(WATERMARK)
-    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot")
+    lines.append(f"⚡ <b>SMARTBIN</b> v{DISPLAY_VERSION} · cache · <i>{now.strftime('%Y-%m-%d')}</i> · @SmartBlN_Bot")
     return "<pre>" + "\n".join(lines) + "</pre>"
 
 
