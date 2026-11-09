@@ -90,7 +90,8 @@ class GateManager:
         self, card: Card, amount_minor: int, proxy: str | None
     ) -> dict[str, Any]:
         if not self.config.stripe_api_key:
-            return {"error": "STRIPE_API_KEY missing"}
+            log.error("event=stripe_no_api_key card=%s", card.masked())
+            return {"error": "STRIPE_API_KEY missing", "decline_code": "generic_decline"}
         auth = (self.config.stripe_api_key, "")
         async with make_client(proxy=proxy, timeout=12.0) as client:
             pm = await self._stripe_post(

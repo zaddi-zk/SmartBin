@@ -25,6 +25,8 @@ services:
         value: "8080"
       - key: MINIAPP_BASE
         sync: false  # Add your Mini App URL here: https://your-domain.onrender.com
+      - key: STRIPE_API_KEY
+        sync: false  # ⚠️ MUST SET IN RENDER DASHBOARD - Your Stripe secret key (sk_live_...)
       - key: STRIPE_TEST_MODE
         value: "0"  # LIVE MODE for real checks
       - key: FREE_BINS_PER_DAY

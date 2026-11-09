@@ -12,8 +12,9 @@ from core.gate import GateManager
 
 log = logging.getLogger("smartbin.canary")
 
-STALE_SECONDS = 30 * 60  # was 20 min - more forgiving for live checks
-DEMOTE_BREAKER_MINUTES = 10  # was 15 min - faster recovery
+STALE_SECONDS = 45 * 60  # was 30 min - more forgiving for live checks
+DEMOTE_BREAKER_MINUTES = 15  # was 10 min - give more time to recover
+STARTUP_GRACE_MINUTES = 5  # First 5 minutes after boot - accept any result
 
 
 def _now() -> datetime:
@@ -70,6 +71,7 @@ class CanaryDaemon:
         self._stop = asyncio.Event()
         self._uses = 0
         self._rotated_at = time.monotonic()
+        self._boot_time = time.monotonic()
 
     def start(self) -> asyncio.Task[Any]:
         if self._task is None or self._task.done():
@@ -156,13 +158,16 @@ class CanaryDaemon:
         last = windows[-1] if windows else []
         last_pass = sum(int(e.get("pass", 0)) for e in last) if last else 0
 
-        if last_pass == 0:
+        # During startup grace, don't kill/demote the gate
+        in_grace = self._in_startup_grace()
+
+        if last_pass == 0 and not in_grace:
             enabled = 0
             breaker_until = _iso(now + timedelta(minutes=DEMOTE_BREAKER_MINUTES))
             action = "kill"
         elif len(windows) >= 2 and all(
             sum(int(e.get("pass", 0)) for e in w) <= 2 for w in windows[-2:]
-        ):
+        ) and not in_grace:
             enabled = 0
             breaker_until = _iso(now + timedelta(minutes=DEMOTE_BREAKER_MINUTES))
             action = "demote"
@@ -216,7 +221,15 @@ class CanaryDaemon:
             self._rotated_at = time.monotonic()
             log.info("event=canary_rotate uses=300_or_6h")
 
+    def _in_startup_grace(self) -> bool:
+        """First 5 minutes after boot - be more forgiving."""
+        return (time.monotonic() - self._boot_time) < (STARTUP_GRACE_MINUTES * 60)
+
     def window_state(self, gate: Mapping[str, Any] | None) -> int:
+        # During startup grace period, accept any gate state
+        if self._in_startup_grace():
+            log.debug("event=canary_startup_grace seconds=%s", int(time.monotonic() - self._boot_time))
+            return 1
         if gate is None or not int(gate["enabled"]):
             return 0
         entries = _load_log(gate["canary_log"])
