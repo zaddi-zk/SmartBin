@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>SMARTBIN</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://telegram.org/js/telegram-web-app.js" defer></script>
 <style>
   :root{
     --bg:#0a0a0b; --panel:#141416; --panel2:#1a1a1e; --line:#2a2a30;
@@ -162,8 +162,94 @@
 </div>
 
 <script>
+(function(){
+'use strict';
+
 const $ = id => document.getElementById(id);
 const VERSION = '7.1.0';
+const POLL_MS = 30000;
+const FETCH_TIMEOUT = 15000;
+const MAX_RETRIES = 2;
+
+/* ---------------------------------------------------------------- safety */
+
+function report(where, err){
+  try { console.warn('[smartbin]', where, err && err.message ? err.message : err); } catch(_){}
+}
+function sleep(ms){ return new Promise(resolve => setTimeout(resolve, ms)); }
+function esc(value){
+  return String(value == null ? '' : value).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+function setText(id, value){
+  const el = $(id);
+  if(!el) return;
+  try { el.textContent = (value == null || value === '') ? '--' : String(value); } catch(_){}
+}
+function toggle(id, on){
+  const el = $(id);
+  if(!el) return;
+  try { el.classList.toggle('hidden', !on); } catch(_){}
+}
+function showError(id, message){
+  const el = $(id);
+  if(!el) return;
+  try { el.textContent = message || 'Something went wrong'; el.classList.remove('hidden'); } catch(_){}
+}
+function hideError(id){
+  const el = $(id);
+  if(!el) return;
+  try { el.classList.add('hidden'); } catch(_){}
+}
+
+/* Never let an unexpected error blank the WebView. */
+window.addEventListener('error', function(event){
+  report('window.error', (event && (event.error || event.message)) || 'unknown');
+});
+window.addEventListener('unhandledrejection', function(event){
+  report('unhandledrejection', (event && event.reason) || 'unknown');
+  try { if(event && event.preventDefault) event.preventDefault(); } catch(_){}
+});
+
+/* ------------------------------------------------------------ fetch layer */
+
+async function fetchJson(url, options){
+  let lastError = null;
+  for(let attempt = 0; attempt <= MAX_RETRIES; attempt++){
+    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    const timer = controller ? setTimeout(function(){
+      try { controller.abort(); } catch(_){}
+    }, FETCH_TIMEOUT) : null;
+    try {
+      const opts = Object.assign({ cache:'no-store', credentials:'omit' }, options || {});
+      if(controller) opts.signal = controller.signal;
+      const res = await fetch(url, opts);
+      if(res.status === 401){
+        const err = new Error('Open from Telegram');
+        err.code = 401;
+        throw err;
+      }
+      if(!res.ok){
+        const err = new Error('Request failed (' + res.status + ')');
+        err.code = res.status;
+        throw err;
+      }
+      const text = await res.text();
+      try { return JSON.parse(text); }
+      catch(_){ throw new Error('Bad server response'); }
+    } catch(err){
+      lastError = err;
+      if(err && err.code === 401) throw err;
+      if(attempt < MAX_RETRIES){ await sleep(400 * (attempt + 1)); continue; }
+    } finally {
+      if(timer) clearTimeout(timer);
+    }
+  }
+  throw lastError || new Error('Network error');
+}
+
+/* --------------------------------------------------------------- renderer */
 
 // §3.3 GLYPH system - emoji compatible
 const G = {
@@ -176,16 +262,21 @@ const G = {
   CL:'📗',GD:'🥇',PT:'💎',SG:'🖋️',IN:'♾️',WL:'🌍',WE:'👑',
 };
 
-function brandG(b){return G[b?.toUpperCase()]||''}
-function typeG(t){return G[t?.toUpperCase()]||''}
-function levelG(l){return G[l?.toUpperCase()]||''}
+function brandG(b){return G[String(b || '').toUpperCase()]||''}
+function typeG(t){return G[String(t || '').toUpperCase()]||''}
+function levelG(l){return G[String(l || '').toUpperCase()]||''}
 
 function readInitData(){
-  if(window.Telegram?.WebApp?.initData)return window.Telegram.WebApp.initData;
-  const h=new URLSearchParams(location.hash.slice(1));
-  return h.get('tgWebAppData')||new URLSearchParams(location.search).get('initData')||'';
+  try {
+    const wa = window.Telegram && window.Telegram.WebApp;
+    if(wa && wa.initData) return wa.initData;
+    const hash = new URLSearchParams(location.hash.slice(1));
+    return hash.get('tgWebAppData')
+      || new URLSearchParams(location.search).get('initData')
+      || '';
+  } catch(_){ return ''; }
 }
-const initData=readInitData();
+const initData = readInitData();
 
 function shown(v,c){
   const t=String(v||'').trim();
@@ -196,6 +287,7 @@ function yes(v){return Number(v||0)?'YES':'NO'}
 
 // §3.2 BIN CARD template
 function renderCard(d){
+  d = d || {};
   const confs=d.field_conf||{};
   const c=f=>Number(confs[f]||0);
   const bin8=d.bin||'UNKNOWN';
@@ -204,7 +296,6 @@ function renderCard(d){
   const ctype=String(d.card_type||'CREDIT').toUpperCase();
   const bank=shown(d.bank,c('bank'));
   const country=String(d.country||'UNKNOWN');
-  const iso2=String(d.iso2||'').toUpperCase();
   const currency=String(d.currency||'USD').toUpperCase();
   const phone=String(d.phone||'');
   const site=String(d.site||'');
@@ -215,19 +306,19 @@ function renderCard(d){
   let note='';
   if(twofa==='NON-VBV*')note=' (single-gate)';
   else if(twofa==='NON-VBV')note=' (two-gate)';
-  
+
   const fn=d.fleet_checks_30d||0;
   const fa=d.fleet_approved||0;
   const fs=d.fleet_soft||0;
   const fh=d.fleet_hard||0;
-  
+
   const bg=brandG(brand),tg=typeG(ctype),lg=levelG(level);
   let twg=G['3DS_UK'];
   if(twofa.includes('NON-VBV'))twg=G['3DS_NV'];
   else if(twofa==='FRICTIONLESS')twg=G['3DS_FL'];
   else if(twofa==='CHALLENGED')twg=G['3DS_CH'];
   else if(twofa==='EXEMPTED')twg=G['3DS_EX'];
-  
+
   const lines=[
     `🧬 SMARTBIN BIN TELEMETRY`,
     `🔢 BIN     ${bin8}`,
@@ -249,125 +340,263 @@ function renderCard(d){
   return lines.join('\n');
 }
 
+/* ------------------------------------------------------------------- data */
+
+let lookupBusy = false;
+
 async function lookup(){
-  const raw=$('bin').value.trim();
-  const err=$('lookup-error'),card=$('card');
-  err.classList.add('hidden');card.classList.add('hidden');
+  if(lookupBusy) return;
+  const binEl = $('bin');
+  const card = $('card');
+  const go = $('go');
+  hideError('lookup-error');
+  toggle('card', false);
+
+  const raw = binEl ? String(binEl.value || '').trim() : '';
   if(!/^\d{6}(\d{2})?$/.test(raw)){
-    err.textContent='BIN must be 6 or 8 digits.';
-    err.classList.remove('hidden');return;
+    showError('lookup-error', 'BIN must be 6 or 8 digits.');
+    return;
   }
-  try{
-    const res=await fetch('/api/bin?bin='+encodeURIComponent(raw),{
-      headers:{'X-Telegram-Init-Data':initData}
+
+  lookupBusy = true;
+  if(go) go.disabled = true;
+  try {
+    const data = await fetchJson('/api/bin?bin=' + encodeURIComponent(raw), {
+      headers: { 'X-Telegram-Init-Data': initData }
     });
-    if(res.status===401)throw new Error('Open from Telegram');
-    if(!res.ok)throw new Error('Lookup failed ('+res.status+')');
-    const data=await res.json();
-    card.textContent=renderCard(data);
-    card.classList.remove('hidden');
-  }catch(e){
-    err.textContent=e.message;err.classList.remove('hidden');
+    if(card){
+      card.textContent = renderCard(data);
+      card.classList.remove('hidden');
+    }
+  } catch(e){
+    showError('lookup-error', (e && e.message) || 'Lookup failed');
+  } finally {
+    lookupBusy = false;
+    if(go) go.disabled = false;
   }
 }
 
+let statusInFlight = false;
+let statusTimer = null;
+
 async function loadStatus(){
-  const err=$('status-error');err.classList.add('hidden');
-  try{
-    const res=await fetch('/api/status',{headers:{'X-Telegram-Init-Data':initData}});
-    if(res.status===401)throw new Error('Open from Telegram');
-    if(!res.ok)throw new Error('Status failed');
-    const d=await res.json();
-    $('s-uptime').textContent=d.uptime;
-    $('s-monthly').textContent=d.monthly_users;
-    $('s-checks').textContent=d.checks_today;
-    $('s-cache').textContent=d.cache_depth;
-    $('s-p50').textContent=d.p50+'ms';
-    $('s-p95').textContent=d.p95+'ms';
-    $('today').textContent=d.date;
-    const gates=$('gates');gates.innerHTML='';
-    (d.gates||[]).forEach(g=>{
-      const el=document.createElement('div');el.className='gate';
-      const ok=Number(g.enabled)&&Number(g.window_state)===1;
-      const can=Number(g.window_total)?`${g.window_pass}/${g.window_total}`:`${g.pass_rate}%`;
-      el.innerHTML=`<span>${ok?'🟢':'🔴'} ${g.label}</span><span class="${ok?'up':'down'}">${ok?'HEALTHY':'DEGRADED'}</span><span>canary ${can}</span><span>p50 ${g.p50}ms</span>`;
-      gates.appendChild(el);
+  if(statusInFlight) return;
+  statusInFlight = true;
+  hideError('status-error');
+  try {
+    const payload = await fetchJson('/api/status', {
+      headers: { 'X-Telegram-Init-Data': initData }
     });
-    const r=document.createElement('div');r.className='hint';
-    r.textContent='Routing: Auto-Route · ISO2 first · canary-gated';
-    gates.appendChild(r);
-    const all=(d.gates||[]).length>0&&(d.gates||[]).every(g=>Number(g.enabled)&&Number(g.window_state)===1);
-    $('dot').style.background=all?'var(--success)':'#f59e0b';
-    $('dot').style.boxShadow=all?'0 0 10px var(--success)':'0 0 10px #f59e0b';
-    $('net').textContent=all?'ONLINE':'DEGRADED';
-  }catch(e){err.textContent=e.message;err.classList.remove('hidden');}
+    const d = payload || {};
+    setText('s-uptime', d.uptime);
+    setText('s-monthly', d.monthly_users);
+    setText('s-checks', d.checks_today);
+    setText('s-cache', d.cache_depth);
+    setText('s-p50', d.p50 == null ? '--' : d.p50 + 'ms');
+    setText('s-p95', d.p95 == null ? '--' : d.p95 + 'ms');
+    setText('today', d.date);
+
+    const gates = $('gates');
+    if(gates){
+      gates.innerHTML = '';
+      const list = Array.isArray(d.gates) ? d.gates : [];
+      list.forEach(function(g){
+        try {
+          g = g || {};
+          const el = document.createElement('div');
+          el.className = 'gate';
+          const ok = !!Number(g.enabled) && Number(g.window_state) === 1;
+          const can = Number(g.window_total)
+            ? (Number(g.window_pass)||0) + '/' + Number(g.window_total)
+            : (Number(g.pass_rate)||0) + '%';
+          el.innerHTML = '<span>' + (ok?'🟢':'🔴') + ' ' + esc(g.label)
+            + '</span><span class="' + (ok?'up':'down') + '">'
+            + (ok?'HEALTHY':'DEGRADED') + '</span><span>canary ' + esc(can)
+            + '</span><span>p50 ' + esc(g.p50) + 'ms</span>';
+          gates.appendChild(el);
+        } catch(_){}
+      });
+      const note = document.createElement('div');
+      note.className = 'hint';
+      note.textContent = 'Routing: Auto-Route · ISO2 first · canary-gated';
+      gates.appendChild(note);
+
+      const all = list.length > 0 && list.every(function(g){
+        return !!Number(g.enabled) && Number(g.window_state) === 1;
+      });
+      const dot = $('dot');
+      if(dot){
+        dot.style.background = all ? 'var(--success)' : '#f59e0b';
+        dot.style.boxShadow = all ? '0 0 10px var(--success)' : '0 0 10px #f59e0b';
+      }
+      setText('net', all ? 'ONLINE' : (list.length ? 'DEGRADED' : 'UNKNOWN'));
+    }
+  } catch(e){
+    showError('status-error', (e && e.message) || 'Status unavailable');
+    setText('net', 'OFFLINE');
+    const dot = $('dot');
+    if(dot){
+      dot.style.background = '#ef4444';
+      dot.style.boxShadow = '0 0 10px #ef4444';
+    }
+  } finally {
+    statusInFlight = false;
+  }
 }
 
 async function loadUser(){
-  if(!window.Telegram?.WebApp?.initDataUnsafe?.user)return;
-  const u=window.Telegram.WebApp.initDataUnsafe.user;
-  $('user-name').textContent=u.first_name+(u.last_name?' '+u.last_name:'');
-  $('user-id').textContent=u.username?'@'+u.username:'ID '+u.id;
-  if(u.photo_url)$('user-photo').src=u.photo_url;
-  else $('user-photo').style.display='none';
-  $('user-info').style.display='flex';
+  try {
+    const wa = window.Telegram && window.Telegram.WebApp;
+    const u = wa && wa.initDataUnsafe && wa.initDataUnsafe.user;
+    if(!u) return;
+    setText('user-name', String(u.first_name || '') + (u.last_name ? ' ' + u.last_name : ''));
+    setText('user-id', u.username ? '@' + u.username : 'ID ' + u.id);
+    const photo = $('user-photo');
+    if(photo){
+      if(u.photo_url) photo.src = u.photo_url;
+      else photo.style.display = 'none';
+    }
+    const info = $('user-info');
+    if(info) info.style.display = 'flex';
+  } catch(e){ report('loadUser', e); }
 }
 
 async function loadRef(){
-  const err=$('ref-error');err.classList.add('hidden');
-  let uid='';
-  if(window.Telegram?.WebApp?.initDataUnsafe?.user){
-    uid=window.Telegram.WebApp.initDataUnsafe.user.id.toString();
-  }
-  try{
-    const res=await fetch('/api/reflink?user_id='+encodeURIComponent(uid),{
-      headers:{'X-Telegram-Init-Data':initData}
+  hideError('ref-error');
+  try {
+    let uid = '';
+    const wa = window.Telegram && window.Telegram.WebApp;
+    if(wa && wa.initDataUnsafe && wa.initDataUnsafe.user){
+      uid = String(wa.initDataUnsafe.user.id || '');
+    }
+    const d = await fetchJson('/api/reflink?user_id=' + encodeURIComponent(uid), {
+      headers: { 'X-Telegram-Init-Data': initData }
     });
-    if(res.status===401){$('ref-link').placeholder='Open from Telegram';return;}
-    if(!res.ok)throw new Error('Failed');
-    const d=await res.json();
-    $('ref-link').value=d.ref_link||'';
-  }catch(e){err.textContent=e.message;err.classList.remove('hidden');}
-}
-
-$('copy').onclick=async()=>{
-  const l=$('ref-link').value;if(!l)return;
-  try{
-    await navigator.clipboard.writeText(l);
-  }catch{
-    $('ref-link').select();document.execCommand('copy');
+    const link = $('ref-link');
+    if(link) link.value = (d && d.ref_link) || '';
+  } catch(e){
+    if(e && e.code === 401){
+      const link = $('ref-link');
+      if(link) link.placeholder = 'Open from Telegram';
+      return;
+    }
+    showError('ref-error', (e && e.message) || 'Failed to load link');
   }
-  $('ref-success').classList.remove('hidden');
-  setTimeout(()=>$('ref-success').classList.add('hidden'),2000);
-};
-
-document.querySelectorAll('.tab').forEach(tab=>{
-  tab.onclick=()=>{
-    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-    tab.classList.add('active');
-    const s=tab.dataset.screen;
-    $('screen-lookup').classList.toggle('hidden',s!=='lookup');
-    $('screen-status').classList.toggle('hidden',s!=='status');
-    $('screen-refer').classList.toggle('hidden',s!=='refer');
-    if(s==='status')loadStatus();
-    if(s==='refer')loadRef();
-  };
-});
-
-$('go').onclick=lookup;
-$('bin').onkeydown=e=>{if(e.key==='Enter')lookup()};
-
-// Init
-const tg = window.Telegram?.WebApp;
-if (tg) {
-  tg.ready();
-  tg.expand();
-  if (tg.setHeaderColor) tg.setHeaderColor('#0a0a0b');
-  if (tg.setBackgroundColor) tg.setBackgroundColor('#0a0a0b');
 }
-loadStatus();
-loadUser();
-setInterval(loadStatus,30000);
+
+/* ------------------------------------------------------------------ wiring */
+
+function copyLink(){
+  const link = $('ref-link');
+  const value = link ? link.value : '';
+  if(!value) return Promise.resolve(false);
+  try {
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      return navigator.clipboard.writeText(value).then(function(){ return true; })
+        .catch(function(){ return legacyCopy(link); });
+    }
+  } catch(_){}
+  return Promise.resolve(legacyCopy(link));
+}
+
+function legacyCopy(link){
+  try {
+    if(!link) return false;
+    link.select();
+    return document.execCommand('copy');
+  } catch(_){ return false; }
+}
+
+function bind(){
+  const copyBtn = $('copy');
+  if(copyBtn){
+    copyBtn.addEventListener('click', function(){
+      copyLink().then(function(ok){
+        if(ok){
+          toggle('ref-success', true);
+          setTimeout(function(){ toggle('ref-success', false); }, 2000);
+        } else {
+          showError('ref-error', 'Copy failed');
+        }
+      }).catch(function(){ showError('ref-error', 'Copy failed'); });
+    });
+  }
+
+  document.querySelectorAll('.tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      try {
+        document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
+        tab.classList.add('active');
+        const screen = tab.dataset ? tab.dataset.screen : '';
+        toggle('screen-lookup', screen === 'lookup');
+        toggle('screen-status', screen === 'status');
+        toggle('screen-refer', screen === 'refer');
+        if(screen === 'status') loadStatus();
+        if(screen === 'refer') loadRef();
+      } catch(e){ report('tab', e); }
+    });
+  });
+
+  const goBtn = $('go');
+  if(goBtn) goBtn.addEventListener('click', function(){ lookup(); });
+
+  const binInput = $('bin');
+  if(binInput) binInput.addEventListener('keydown', function(e){
+    if(e && e.key === 'Enter'){ e.preventDefault(); lookup(); }
+  });
+}
+
+function initTelegram(){
+  try {
+    const tg = window.Telegram && window.Telegram.WebApp;
+    if(!tg) return;
+    const call = function(name, arg){
+      try { if(typeof tg[name] === 'function') tg[name](arg); }
+      catch(e){ report('telegram.' + name, e); }
+    };
+    call('ready');
+    call('expand');
+    call('setHeaderColor', '#0a0a0b');
+    call('setBackgroundColor', '#0a0a0b');
+    call('disableVerticalSwipes');
+  } catch(e){ report('telegram', e); }
+}
+
+function startPolling(){
+  if(statusTimer) clearInterval(statusTimer);
+  statusTimer = setInterval(function(){
+    try {
+      if(document.visibilityState === 'hidden') return;
+      loadStatus();
+    } catch(e){ report('poll', e); }
+  }, POLL_MS);
+  try {
+    document.addEventListener('visibilitychange', function(){
+      try { if(document.visibilityState === 'visible') loadStatus(); } catch(_){}
+    });
+  } catch(_){}
+}
+
+let booted = false;
+
+function boot(){
+  if(booted) return;
+  booted = true;
+  try { initTelegram(); } catch(e){ report('boot.telegram', e); }
+  try { bind(); } catch(e){ report('boot.bind', e); }
+  try { loadStatus(); } catch(e){ report('boot.status', e); }
+  try { loadUser(); } catch(e){ report('boot.user', e); }
+  try { startPolling(); } catch(e){ report('boot.poll', e); }
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', boot, { once:true });
+  // A stalled third-party script must never keep the UI from starting.
+  setTimeout(boot, 2500);
+} else {
+  boot();
+}
+})();
 </script>
 </body>
 </html>

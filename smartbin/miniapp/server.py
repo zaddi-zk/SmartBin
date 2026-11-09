@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -14,7 +15,11 @@ from config import DISPLAY_VERSION
 from core.canaries import percentile
 from models import utc_date, utcnow_iso
 
+log = logging.getLogger("smartbin.miniapp")
+
 STATIC = Path(__file__).resolve().parent / "static" / "index.html"
+BOT_USERNAME_FALLBACK = "SmartBlN_Bot"
+_BOT_USERNAME = BOT_USERNAME_FALLBACK
 
 
 def verify_init_data(init_data: str, bot_token: str, max_age: int = 86400) -> dict[str, Any] | None:
@@ -145,41 +150,152 @@ async def _touch_user(runtime: Any, pairs: dict[str, Any]) -> None:
     )
 
 
+def _safe_uptime(runtime: Any) -> str:
+    try:
+        return runtime.uptime()
+    except Exception:
+        return ""
+
+
+async def _safe_touch(runtime: Any, pairs: dict[str, Any]) -> None:
+    """Activity accounting must never break a Mini App response."""
+    try:
+        await _touch_user(runtime, pairs)
+    except Exception as exc:
+        log.warning("event=miniapp_touch_failed error=%s", exc)
+
+
+def _degraded_status(runtime: Any) -> dict[str, Any]:
+    """Minimal status payload so the UI still renders when the DB hiccups."""
+    return {
+        "uptime": _safe_uptime(runtime),
+        "monthly_users": 0,
+        "checks_today": 0,
+        "cache_depth": 0,
+        "p50": 0,
+        "p95": 0,
+        "revenue_xtr": 0,
+        "gates": [],
+        "version": DISPLAY_VERSION,
+        "date": utc_date(),
+        "degraded": True,
+    }
+
+
+async def _bot_username(runtime: Any) -> str:
+    global _BOT_USERNAME
+    try:
+        me = await runtime.bot.get_me()
+        username = getattr(me, "username", None)
+        if username:
+            _BOT_USERNAME = username
+    except Exception as exc:
+        log.warning("event=miniapp_getme_failed error=%s", exc)
+    return _BOT_USERNAME
+
+
+@web.middleware
+async def _no_store(request: web.Request, handler: Any) -> web.StreamResponse:
+    """Prevent Telegram/WebView caches from serving a stale or broken shell."""
+    try:
+        response = await handler(request)
+    except web.HTTPException as exc:
+        try:
+            exc.headers.setdefault("Cache-Control", "no-store")
+        except Exception:
+            pass
+        raise
+    except Exception as exc:
+        log.exception(
+            "event=miniapp_unhandled path=%s error=%s", request.path, exc
+        )
+        response = web.json_response({"error": "server error"}, status=500)
+    try:
+        response.headers["Cache-Control"] = (
+            "no-store, no-cache, must-revalidate, max-age=0"
+        )
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    except Exception:
+        pass
+    return response
+
+
 def create_app(runtime: Any) -> web.Application:
-    app = web.Application()
+    app = web.Application(middlewares=[_no_store])
     app["runtime"] = runtime
 
     async def index(request: web.Request) -> web.StreamResponse:
-        if not STATIC.exists():
-            return web.Response(text="Mini App not built", status=404)
-        return web.FileResponse(STATIC)
+        try:
+            if not STATIC.exists():
+                return web.Response(text="Mini App not built", status=404)
+            return web.FileResponse(STATIC)
+        except Exception as exc:
+            log.exception("event=miniapp_index_failed error=%s", exc)
+            return web.Response(text="Mini App temporarily unavailable", status=503)
+
+    async def favicon(request: web.Request) -> web.Response:
+        return web.Response(status=204)
 
     async def api_bin(request: web.Request) -> web.Response:
-        pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        try:
+            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        except Exception as exc:
+            log.warning("event=miniapp_verify_failed error=%s", exc)
+            pairs = None
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
-        await _touch_user(runtime, pairs)
+        await _safe_touch(runtime, pairs)
+
         raw = request.query.get("bin", "")
         digits = "".join(c for c in raw if c.isdigit())
         if len(digits) not in (6, 8):
             return web.json_response({"error": "bin must be 6 or 8 digits"}, status=400)
-        record = await runtime.store.get_prefix(digits) if len(digits) == 6 else await runtime.store.get(digits)
-        return web.json_response(card_json(record, free=True))
+        try:
+            if len(digits) == 6:
+                record = await runtime.store.get_prefix(digits)
+            else:
+                record = await runtime.store.get(digits)
+        except Exception as exc:
+            log.warning("event=miniapp_bin_failed bin=%s error=%s", digits, exc)
+            return web.json_response({"error": "lookup unavailable"}, status=503)
+        if record is None:
+            return web.json_response({"error": "BIN not found"}, status=404)
+        try:
+            payload = card_json(record, free=True)
+        except Exception as exc:
+            log.warning("event=miniapp_card_failed bin=%s error=%s", digits, exc)
+            return web.json_response({"error": "lookup unavailable"}, status=503)
+        return web.json_response(payload)
 
     async def api_status(request: web.Request) -> web.Response:
-        pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        try:
+            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        except Exception as exc:
+            log.warning("event=miniapp_verify_failed error=%s", exc)
+            pairs = None
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
-        await _touch_user(runtime, pairs)
-        return web.json_response(await status_json(runtime))
+        await _safe_touch(runtime, pairs)
+        try:
+            payload = await status_json(runtime)
+        except Exception as exc:
+            log.warning("event=miniapp_status_failed error=%s", exc)
+            payload = _degraded_status(runtime)
+        return web.json_response(payload)
 
     async def api_reflink(request: web.Request) -> web.Response:
-        pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        try:
+            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        except Exception as exc:
+            log.warning("event=miniapp_verify_failed error=%s", exc)
+            pairs = None
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
-        await _touch_user(runtime, pairs)
+        await _safe_touch(runtime, pairs)
         user_id = request.query.get("user_id", "")
-        bot_username = (await runtime.bot.get_me()).username
+        bot_username = await _bot_username(runtime)
         ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}" if user_id else ""
         return web.json_response({"ref_link": ref_link})
 
@@ -187,6 +303,7 @@ def create_app(runtime: Any) -> web.Application:
         return web.json_response({"ok": True, "version": DISPLAY_VERSION, "time": utcnow_iso()})
 
     app.router.add_get("/", index)
+    app.router.add_get("/favicon.ico", favicon)
     app.router.add_get("/api/bin", api_bin)
     app.router.add_get("/api/status", api_status)
     app.router.add_post("/api/status", api_status)
