@@ -32,16 +32,16 @@ TEST_CARDS: dict[str, dict[str, Any]] = {
 
 
 class GateManager:
-    """Stripe auth-and-void. Per-gate cap 8, global cap 40, backoff on 429."""
+    """Stripe auth-and-void. PEAK MODE: higher concurrency for speed."""
 
     def __init__(self, config: Config):
         self.config = config
-        self.global_sem = asyncio.Semaphore(40)
+        self.global_sem = asyncio.Semaphore(60)  # was 40 - more parallel checks
         self.gate_sems: dict[str, asyncio.Semaphore] = {}
 
     def _sem(self, name: str) -> asyncio.Semaphore:
         if name not in self.gate_sems:
-            self.gate_sems[name] = asyncio.Semaphore(8)
+            self.gate_sems[name] = asyncio.Semaphore(12)  # was 8 - faster per-gate
         return self.gate_sems[name]
 
     async def dispatch(
@@ -56,11 +56,11 @@ class GateManager:
     ) -> dict[str, Any]:
         async with self.global_sem:
             async with self._sem(gate_name):
+                # PEAK MODE: minimal delay for speed
                 if self.config.stripe_test_mode:
-                    await asyncio.sleep(random.uniform(0.005, 0.02))
+                    await asyncio.sleep(random.uniform(0.001, 0.005))
                 else:
-                    base = 0.2
-                    await asyncio.sleep(random.uniform(base * 0.75, base * 1.25))
+                    await asyncio.sleep(random.uniform(0.05, 0.15))  # was 0.2s base
                 started = time.perf_counter()
                 try:
                     if self.config.stripe_test_mode:

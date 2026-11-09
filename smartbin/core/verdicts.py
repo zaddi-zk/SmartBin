@@ -21,9 +21,9 @@ NETWORK_CODES: dict[str, tuple[str, int, str]] = {
 }
 
 STRIPE_CODES: dict[str, tuple[str, int, str]] = {
-    "generic_decline": ("AMBIGUOUS", 0, "second-gate-required"),
-    "fraudulent": ("AMBIGUOUS", 0, "second-gate-required"),
-    "do_not_honor": ("AMBIGUOUS", 0, "second-gate-required"),
+    "generic_decline": ("DECLINED", 0, "final"),  # was AMBIGUOUS - be decisive
+    "fraudulent": ("DECLINED", 0, "final"),  # was AMBIGUOUS
+    "do_not_honor": ("DO-NOT-HONOR", 0, "final"),  # was AMBIGUOUS
     "insufficient_funds": ("INSUFFICIENT", 1, "no-funds"),
     "expired_card": ("EXPIRED", 0, "dead-by-date"),
     "incorrect_cvc": ("CVV-FAIL", 1, "live-cvv-wrong"),
@@ -32,9 +32,9 @@ STRIPE_CODES: dict[str, tuple[str, int, str]] = {
     "pickup_card": ("PICKUP", 0, "dead-or-reported"),
     "lost_card": ("PICKUP", 0, "dead-or-reported"),
     "stolen_card": ("PICKUP", 0, "dead-or-reported"),
-    "card_not_supported": ("MERCHANT-RESTRICTED", 1, "not-card-health-signal"),
-    "restricted_card": ("MERCHANT-RESTRICTED", 1, "not-card-health-signal"),
-    "security_violation": ("MERCHANT-RESTRICTED", 1, "not-card-health-signal"),
+    "card_not_supported": ("LIVE-RESTRICTED", 1, "card-is-live"),  # was MERCHANT-RESTRICTED
+    "restricted_card": ("LIVE-RESTRICTED", 1, "card-is-live"),
+    "security_violation": ("DECLINED", 0, "final"),  # was MERCHANT-RESTRICTED
     "processing_error": ("INCONCLUSIVE", 0, "retry-or-degrade"),
     "authentication_required": ("3DS-CHALLENGE", 1, "capture-acs"),
 }

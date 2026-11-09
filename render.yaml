@@ -3,7 +3,7 @@ services:
     name: SmartBin
     env: python
     region: oregon
-    plan: starter
+    plan: free  # $0/mo - budget conscious (can go negative if needed)
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:
@@ -20,13 +20,13 @@ services:
       - key: MINIAPP_BASE
         sync: false  # Add your Mini App URL here: https://your-domain.onrender.com
       - key: STRIPE_TEST_MODE
-        value: "1"
+        value: "0"  # LIVE MODE for real checks
       - key: FREE_BINS_PER_DAY
         value: "10"
       - key: FREE_CHECKS_PER_DAY
-        value: "3"
+        value: "5"  # increased for peak usage
       - key: LOG_LEVEL
-        value: INFO
+        value: WARNING  # less logging = faster
     disk:
       name: smartbin-data
       mountPath: /home/render

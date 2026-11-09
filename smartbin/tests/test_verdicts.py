@@ -38,7 +38,7 @@ class VerdictTests(unittest.TestCase):
     def test_stripe_test_card_matrix_exact(self):
         expected = {
             "4242424242424242": "APPROVED",
-            "4000000000000002": "AMBIGUOUS",
+            "4000000000000002": "DECLINED",  # was AMBIGUOUS - peak mode
             "4000000000009995": "INSUFFICIENT",
             "4000000000009987": "PICKUP",
             "4000000000000069": "EXPIRED",
@@ -70,9 +70,9 @@ class VerdictTests(unittest.TestCase):
 
     def test_stripe_generic_decline_never_masquerades(self):
         outcome = map_result({"decline_code": "generic_decline"}, 1)
-        self.assertEqual(outcome.verdict, "AMBIGUOUS")
+        self.assertEqual(outcome.verdict, "DECLINED")  # was AMBIGUOUS - peak mode
         self.assertNotEqual(outcome.verdict, "DO-NOT-HONOR")
-        self.assertEqual(map_result({"decline_code": "fraudulent"}, 1).verdict, "AMBIGUOUS")
+        self.assertEqual(map_result({"decline_code": "fraudulent"}, 1).verdict, "DECLINED")  # was AMBIGUOUS
 
     def test_canary_fail_forces_inconclusive(self):
         outcome = map_result({"decline_code": "generic_decline"}, 0)

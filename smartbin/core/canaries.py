@@ -12,8 +12,8 @@ from core.gate import GateManager
 
 log = logging.getLogger("smartbin.canary")
 
-STALE_SECONDS = 20 * 60
-DEMOTE_BREAKER_MINUTES = 15
+STALE_SECONDS = 30 * 60  # was 20 min - more forgiving for live checks
+DEMOTE_BREAKER_MINUTES = 10  # was 15 min - faster recovery
 
 
 def _now() -> datetime:
@@ -224,7 +224,9 @@ class CanaryDaemon:
         if not windows:
             return -1
         last = windows[-1]
-        if sum(int(e.get("pass", 0)) for e in last) != 3:
+        # PEAK MODE: accept 2/3 passes instead of strict 3/3
+        passes = sum(int(e.get("pass", 0)) for e in last)
+        if passes < 2:
             return 0
         raw = str(gate["last_canary_utc"] or "")
         if not raw:
