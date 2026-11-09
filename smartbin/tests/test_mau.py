@@ -10,22 +10,15 @@ from db import DB
 
 
 class _FakeBot:
-    def __init__(self, long_description: str = ""):
+    def __init__(self):
         self.short: dict[str | None, str] = {}
         self.long: dict[str | None, str] = {}
-        self._long_description = long_description
 
     async def set_my_short_description(self, short_description="", language_code=None):
         self.short[language_code] = short_description
 
-    async def get_my_description(self, language_code=None):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(description=self._long_description)
-
     async def set_my_description(self, description="", language_code=None):
         self.long[language_code] = description
-        self._long_description = description
 
 
 class MonthlyUsersTest(unittest.TestCase):
@@ -122,7 +115,7 @@ class MonthlyUsersTest(unittest.TestCase):
     async def _run_description(self):
         from types import SimpleNamespace
 
-        from description import update_description
+        from description import SHORT_DESCRIPTION, update_description
 
         class FakeDB:
             async def monthly_users(self):
@@ -132,27 +125,12 @@ class MonthlyUsersTest(unittest.TestCase):
         runtime = SimpleNamespace(db=FakeDB())
         text = await update_description(bot, runtime)
         self.assertEqual(text, "5,746 monthly users")
-        # Short description is what appears directly under the bot name,
-        # including the English-language variant Telegram serves.
-        self.assertEqual(bot.short[None], "5,746 monthly users")
-        self.assertEqual(bot.short["en"], "5,746 monthly users")
-        # The long description must not be touched by the count updater.
-        self.assertEqual(bot.long, {})
-
-    def test_legacy_long_description_is_cleared(self):
-        asyncio.run(self._run_clear())
-
-    async def _run_clear(self):
-        from description import clear_legacy_description
-
-        bot = _FakeBot(long_description="5,746 monthly users")
-        await clear_legacy_description(bot)
-        self.assertEqual(bot.long.get(None), "")
-
-        # A real description is left untouched.
-        bot2 = _FakeBot(long_description="Hit /start for daily free access!")
-        await clear_legacy_description(bot2)
-        self.assertEqual(bot2.long, {})
+        # Long description is the line under the bot name.
+        self.assertEqual(bot.long[None], "5,746 monthly users")
+        self.assertEqual(bot.long["en"], "5,746 monthly users")
+        # Short description is the profile row / share preview.
+        self.assertEqual(bot.short[None], SHORT_DESCRIPTION)
+        self.assertEqual(bot.short["en"], SHORT_DESCRIPTION)
 
 
 if __name__ == "__main__":
