@@ -54,7 +54,6 @@ async def _stats(runtime) -> dict:
     checks_today = int(all_stats.get(f"day:{utc_date()}:checks", 0))
     return {
         "uptime": runtime.uptime(),
-        "monthly_users": await db.monthly_users(),
         "checks_today": checks_today,
         "cache_depth": runtime.store.depth(),
         "p50": int(percentile(latencies, 50)),

@@ -70,15 +70,15 @@ class MonthlyUsersTest(unittest.TestCase):
         finally:
             await db.close()
 
-    def test_menu_and_public_status_show_monthly_users_only(self):
+    def test_monthly_count_is_not_sent_as_chat_text(self):
         from types import SimpleNamespace
 
         import render
         import ui
 
         config = SimpleNamespace(display_version="7.1.0", premium_emoji_id="")
-        menu = ui.menu_text(config, None, 5746)
-        self.assertIn("📊  <b>5,746 monthly users</b>", menu)
+        menu = ui.menu_text(config, None)
+        self.assertNotIn("monthly users", menu)
 
         block = render.status_block(
             {
@@ -93,9 +93,39 @@ class MonthlyUsersTest(unittest.TestCase):
                 "gates": [],
             }
         )
-        self.assertIn("📊  5,746 monthly users", block)
+        self.assertNotIn("monthly users", block)
         self.assertNotIn("USERS", block)
         self.assertNotIn("PREMIUM", block)
+
+    def test_description_task_updates_bot_profile(self):
+        asyncio.run(self._run_description())
+
+    async def _run_description(self):
+        from types import SimpleNamespace
+
+        from description import update_description
+
+        class FakeDB:
+            async def monthly_users(self):
+                return 5746
+
+        class FakeBot:
+            def __init__(self):
+                self.short = None
+                self.long = None
+
+            async def set_my_short_description(self, short_description=""):
+                self.short = short_description
+
+            async def set_my_description(self, description=""):
+                self.long = description
+
+        bot = FakeBot()
+        runtime = SimpleNamespace(db=FakeDB())
+        text = await update_description(bot, runtime)
+        self.assertEqual(text, "5,746 monthly users")
+        self.assertEqual(bot.short, "5,746 monthly users")
+        self.assertEqual(bot.long, "5,746 monthly users")
 
 
 if __name__ == "__main__":

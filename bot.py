@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, 'smartbin')
 
 from config import Config
+from description import description_loop
 from handlers import setup_routers
 from middleware.activity import ActivityMiddleware
 from middleware.rate_limit import RateLimitMiddleware
@@ -99,6 +100,9 @@ async def main() -> int:
         runtime.store.depth(),
     )
     await configure_bot(bot, config)
+    description_task = asyncio.create_task(
+        description_loop(bot, runtime), name="smartbin-description"
+    )
     try:
         await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
     except asyncio.CancelledError:
@@ -107,6 +111,11 @@ async def main() -> int:
         log.error("event=polling_failed error=%s", exc)
         return 1
     finally:
+        description_task.cancel()
+        try:
+            await description_task
+        except asyncio.CancelledError:
+            pass
         await close_runtime(runtime)
         await bot.session.close()
         log.info("event=shutdown")
