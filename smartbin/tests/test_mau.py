@@ -113,24 +113,19 @@ class MonthlyUsersTest(unittest.TestCase):
         asyncio.run(self._run_description())
 
     async def _run_description(self):
-        from types import SimpleNamespace
-
-        from description import SHORT_DESCRIPTION, update_description
-
-        class FakeDB:
-            async def monthly_users(self):
-                return 5746
+        from description import LONG_DESCRIPTION, SHORT_DESCRIPTION, update_description
 
         bot = _FakeBot()
-        runtime = SimpleNamespace(db=FakeDB())
-        text = await update_description(bot, runtime)
-        self.assertEqual(text, "5,746 monthly users")
-        # Count under the bot name; tagline in the Description row.
-        self.assertEqual(bot.long[None], "5,746 monthly users")
-        self.assertEqual(bot.long["en"], "5,746 monthly users")
+        text = await update_description(bot)
+        self.assertEqual(text, LONG_DESCRIPTION)
+        # Taglines only; no user count in the profile.
+        self.assertEqual(bot.long[None], "CCs🔪🔪🔪🔥")
+        self.assertEqual(bot.long["en"], "CCs🔪🔪🔪🔥")
         self.assertEqual(bot.short[None], SHORT_DESCRIPTION)
         self.assertEqual(bot.short["en"], SHORT_DESCRIPTION)
         self.assertEqual(SHORT_DESCRIPTION, "CC Checker & Killer 🔪")
+        self.assertNotIn("monthly", LONG_DESCRIPTION.lower())
+        self.assertNotIn("monthly", SHORT_DESCRIPTION.lower())
 
 
 if __name__ == "__main__":
