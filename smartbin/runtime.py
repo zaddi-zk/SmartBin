@@ -9,6 +9,7 @@ from config import Config
 from core.canaries import CanaryDaemon
 from core.check_runner import CheckRunner
 from core.gate import GateManager
+from core.reconciler import brand_from_bin
 from db import DB
 from sources import build_sources
 from store import Store
@@ -67,9 +68,22 @@ async def _seed_proxies(db: DB, path: str = "us_proxies.txt") -> int:
     return added
 
 
+async def _backfill_brands(db: DB) -> int:
+    """Repair cached rows whose brand came from noisy source labels."""
+    fixed = 0
+    rows = await db.fetchall("SELECT bin, brand FROM bins")
+    for row in rows:
+        want = brand_from_bin(str(row["bin"]))
+        if want != "UNKNOWN" and str(row["brand"] or "") != want:
+            await db.execute("UPDATE bins SET brand=? WHERE bin=?", (want, row["bin"]))
+            fixed += 1
+    return fixed
+
+
 async def build_runtime(config: Config, offline: bool = False) -> Runtime:
     global RUNTIME
     db = await DB(config.db_path, database_url=config.database_url).init()
+    await _backfill_brands(db)
     await _seed_proxies(db)
     sources = build_sources(offline=offline)
 
