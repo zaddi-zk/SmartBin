@@ -23,16 +23,16 @@ GLYPH = {
     "AVS_MATCH": "✅", "AVS_PARTIAL": "⚠️", "AVS_MISMATCH": "❌", "AVS_UNCHECKED": "⚫",
     # 3ds
     "3DS_NON_VBV": "🔓", "3DS_FRICTIONLESS": "✅", "3DS_CHALLENGED": "🔐",
-    "3DS_EXEMPTED": "🛡️", "3DS_UNSUPPORTED": "❌", "3DS_UNKNOWN": "❓",
+    "3DS_EXEMPTED": "🛡️", "3DS_UNSUPPORTED": "❌", "3DS_UNKNOWN": "⚪",
     "3DS_ORACLE_OK": "🔒",
     # brands
-    "VISA": "V", "MASTERCARD": "M", "AMEX": "A", "DISCOVER": "D",
-    "JCB": "J", "UNIONPAY": "U", "DINERS": "Di", "MAESTRO": "Ma",
+    "VISA": "💳", "MASTERCARD": "💰", "AMEX": "🏦", "DISCOVER": "🧿",
+    "JCB": "🗾", "UNIONPAY": "🇨🇳", "DINERS": "🎫", "MAESTRO": "🏢",
     # type
     "PREPAID": "🪙", "DEBIT": "🏧", "CREDIT": "💳", "COMMERCIAL": "🏢", "CORPORATE": "🏭",
     # level
-    "CLASSIC": "C", "GOLD": "🥇", "PLATINUM": "💎", "SIGNATURE": "S",
-    "INFINITE": "∞", "WORLD": "W", "WORLD_ELITE": "👑",
+    "CLASSIC": "📗", "GOLD": "🥇", "PLATINUM": "💎", "SIGNATURE": "🖋️",
+    "INFINITE": "♾️", "WORLD": "🌍", "WORLD_ELITE": "👑",
     # canary
     "CANARY_PASS": "✅", "CANARY_DEGRADED": "⚠️", "CANARY_FAIL": "❌",
     # gate
@@ -68,10 +68,16 @@ def _field_conf(confs: Mapping[str, Any], field: str, verified: str, now: dateti
 def _shown(value: Any, conf: float) -> str:
     text = str(value or "").strip()
     if not text or text.upper() == "UNKNOWN":
-        return "UNKNOWN"
+        return "—"
     if conf < 60.0:
         return f"{text} 🟨 LOW-CONF"
     return text
+
+
+def _label(value: Any) -> str:
+    """Display label: unknown/empty becomes an em dash, never a stray glyph."""
+    text = str(value or "").strip()
+    return "—" if not text or text.upper() == "UNKNOWN" else text
 
 
 def _yes(value: Any) -> str:
@@ -79,14 +85,20 @@ def _yes(value: Any) -> str:
 
 
 def _brand_glyph(brand: str) -> str:
+    if not brand or brand.upper() == "UNKNOWN":
+        return ""
     return GLYPH.get(brand.upper(), "")
 
 
 def _level_glyph(level: str) -> str:
+    if not level or level.upper() == "UNKNOWN":
+        return ""
     return GLYPH.get(level.upper(), "")
 
 
 def _type_glyph(card_type: str) -> str:
+    if not card_type or card_type.upper() == "UNKNOWN":
+        return ""
     return GLYPH.get(card_type.upper(), "")
 
 
@@ -138,7 +150,12 @@ def check_result_block(
     brand_glyph = _brand_glyph(brand)
     type_glyph = _type_glyph(card_type)
     level_glyph = _level_glyph(level)
-    type_line = f"💰 TYPE    {brand} · {type_glyph} {card_type} · {level_glyph} {level}"
+    type_parts = [f"{brand_glyph} {_label(brand)}".strip()]
+    if _label(card_type) != "—":
+        type_parts.append(f"{type_glyph} {_label(card_type)}".strip())
+    if _label(level) != "—":
+        type_parts.append(f"{level_glyph} {_label(level)}".strip())
+    type_line = "🏷️ TYPE    " + " · ".join(type_parts)
 
     # Country line
     country = str(d.get("country") or "UNKNOWN")
@@ -277,12 +294,19 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     level_glyph = _level_glyph(level)
     twofa_glyph = GLYPH.get(f"3DS_{twofa.upper().replace('*', '')}", GLYPH["3DS_UNKNOWN"])
 
+    type_parts = [f"{brand_glyph} {_label(brand)}".strip()]
+    if _label(card_type) != "—":
+        type_parts.append(f"{type_glyph} {_label(card_type)}".strip())
+    if _label(level) != "—":
+        type_parts.append(f"{level_glyph} {_label(level)}".strip())
+    type_line = "🏷️ TYPE    " + " · ".join(type_parts)
+
     lines = [
         f"🧬 SMARTBIN BIN TELEMETRY",
         f"🔢 BIN     {bin8}",
         f"🏦 BANK    {bank} ☎ {phone[:7] if phone else ''}..." if phone else f"🏦 BANK    {bank}",
-        f"💰 TYPE    {brand_glyph} {brand} · {type_glyph} {card_type} · {level_glyph} {level}",
-        f"📍 WORLD   🇺🇸 {country if iso2 == 'US' else country} · 💱 {currency} · {length} · 🧮 luhn",
+        type_line,
+        f"📍 WORLD   🇺🇸 {_label(country)} · 💱 {currency} · {length} · 🧮 luhn",
         f"🪙 PREPAID {'YES' if prepaid else 'NO'} · 🏢 COMMERCIAL {'YES' if commercial else 'NO'} · ATM DEBIT {'YES' if atm_debit else 'NO'}",
     ]
 
@@ -291,7 +315,7 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     if site:
         lines.append(f"🔗 SITE    {site}")
 
-    lines.append(f"🔐 2FA     {twofa_glyph} {twofa}{twofa_note} · reads {twofa_reads} · conf {twofa_conf}")
+    lines.append(f"🔐 2FA     {twofa_glyph} {_label(twofa)}{twofa_note} · reads {twofa_reads} · conf {twofa_conf}")
 
     if fleet_n >= 5:
         fleet_line = f"📊 FLEET   {fleet_n} checks · {GLYPH['LIVE']}{fleet_approved} · {GLYPH['SOFT_DECLINE']}{fleet_soft} · {GLYPH['DEAD']}{fleet_hard} · last 2h ago"
@@ -330,7 +354,7 @@ def _action_note(outcome: CheckOutcome) -> str:
     if outcome.action == "canary-window-failed":
         return "GATEWAY NOT READY: canary window not clean (processor rejected probe)"
     if outcome.action == "no-proxy":
-        return "NO PROXY: proxy pool empty, check not dispatched"
+        return "INCONCLUSIVE-NO-PROXY: proxy pool empty, check not dispatched"
     if (
         outcome.verdict == "INCONCLUSIVE"
         and not outcome.decline_code

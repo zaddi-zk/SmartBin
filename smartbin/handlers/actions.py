@@ -51,7 +51,7 @@ async def _bin_result(
     await mark_first(runtime.db, "first_bin")
     await runtime.db.stats_bump(f"day:{utc_date()}:bins")
     await message.answer(
-        card_block(record, free=free_watermark(db_user)),
+        card_block(record, free=free_watermark(db_user, runtime.config)),
         parse_mode="HTML",
         reply_markup=ui.bin_kb(arg),
     )
@@ -129,7 +129,7 @@ async def run_check_and_render(
         verdict_header(outcome, health, gate_label)
         + "\n"
         + verdict_block(
-            outcome, parsed, free=free_watermark(db_user), gate_label=gate_label
+            outcome, parsed, free=free_watermark(db_user, runtime.config), gate_label=gate_label
         ),
         parse_mode="HTML",
         reply_markup=ui.verdict_kb(parsed.bin8),

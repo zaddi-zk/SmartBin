@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, Message
 
 import ui
-from handlers.common import free_watermark, is_premium
+from handlers.common import free_watermark, is_admin, is_premium
 from models import Card
 from render import WATERMARK
 from states import Flow
@@ -19,7 +19,11 @@ router = Router(name="bulk")
 
 
 async def bulk_cap(runtime, user) -> int:
-    if is_premium(user):
+    try:
+        uid = int(user["user_id"])
+    except (KeyError, TypeError, ValueError):
+        uid = int(getattr(user, "id", 0) or 0)
+    if is_admin(uid, runtime.config) or is_premium(user):
         return runtime.config.bulk_premium_lines
     if int(user["credits"]) >= 1:
         return 500
@@ -111,7 +115,7 @@ async def run_lines(
     )
     writer.writerows(rows)
     db_user = await runtime.db.reset_quota_if_needed(user.id)
-    free = free_watermark(db_user)
+    free = free_watermark(db_user, runtime.config)
     body = "<pre>" + "\n".join(summary) + "</pre>"
     if free:
         body += "\n" + WATERMARK

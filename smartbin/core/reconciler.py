@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any, Iterable
 
@@ -45,6 +46,51 @@ LEVEL_MAP = {
     "consumer": "CLASSIC",
     "rewards": "CLASSIC",
 }
+
+BRAND_MAP = {
+    "visa": "VISA",
+    "mastercard": "MASTERCARD",
+    "master card": "MASTERCARD",
+    "mc": "MASTERCARD",
+    "amex": "AMEX",
+    "american express": "AMEX",
+    "discover": "DISCOVER",
+    "jcb": "JCB",
+    "unionpay": "UNIONPAY",
+    "union pay": "UNIONPAY",
+    "diners": "DINERS",
+    "diners club": "DINERS",
+    "maestro": "MAESTRO",
+}
+BRAND_CANON = set(BRAND_MAP.values())
+
+
+def brand_from_bin(bin8: str) -> str:
+    """Authoritative network from the IIN prefix. Beats noisy source labels."""
+    digits = re.sub(r"\D", "", str(bin8 or ""))
+    if not digits:
+        return "UNKNOWN"
+    if digits[0] == "4":
+        return "VISA"
+    two = int(digits[:2]) if len(digits) >= 2 else 0
+    three = int(digits[:3]) if len(digits) >= 3 else 0
+    four = int(digits[:4]) if len(digits) >= 4 else 0
+    six = int(digits[:6]) if len(digits) >= 6 else 0
+    if 51 <= two <= 55 or 2221 <= four <= 2720:
+        return "MASTERCARD"
+    if two in (34, 37):
+        return "AMEX"
+    if two == 62:
+        return "UNIONPAY"
+    if four == 6011 or two == 65 or 644 <= three <= 649 or 622126 <= six <= 622925:
+        return "DISCOVER"
+    if 3528 <= four <= 3589:
+        return "JCB"
+    if two in (36, 38) or 300 <= three <= 305:
+        return "DINERS"
+    if four in (5018, 5020, 5038, 6304, 6759, 6761, 6762, 6763):
+        return "MAESTRO"
+    return "UNKNOWN"
 
 STRING_FIELDS = ("brand", "level", "bank", "phone", "site", "country", "iso2", "currency")
 INT_FIELDS = ("prepaid", "commercial", "bin_age", "card_length", "luhn", "avs", "dob", "ssn", "mmn")
@@ -96,7 +142,10 @@ def _normalize_string(field: str, value: Any) -> str:
         return text.upper()[:2]
     if field == "currency":
         return text.upper()[:3]
-    if field in ("brand", "country", "bank"):
+    if field == "brand":
+        key = " ".join(text.lower().replace("_", " ").replace("-", " ").split())
+        return BRAND_MAP.get(key, "")
+    if field in ("country", "bank"):
         return text.title() if text.isupper() else text
     return text
 
@@ -181,6 +230,13 @@ def reconcile(
         if provenance:
             sources_json[field] = provenance
             field_conf[field] = conf
+
+    # The IIN prefix is authoritative for the network; source "brand" labels are
+    # noisy (e.g. Mastercard "World" arrives as brand=WORLD).
+    inferred = brand_from_bin(bin8)
+    if inferred != "UNKNOWN" and str(record.get("brand") or "") != inferred:
+        record["brand"] = inferred
+        field_conf["brand"] = max(field_conf.get("brand", 0.0), 65.0)
 
     for field in INT_FIELDS:
         values = [(name, weight, data[field]) for name, weight, data in rows if field in data]

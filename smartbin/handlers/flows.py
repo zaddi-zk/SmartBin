@@ -107,12 +107,23 @@ async def cb_why(callback: CallbackQuery, runtime) -> None:
     await callback.answer()
 
 
+@router.callback_query(F.data == "flow:fix")
+async def cb_fix_start(callback: CallbackQuery, state: FSMContext) -> None:
+    """Start correction flow from the inline menu button."""
+    await callback.answer()
+    await state.set_state(Flow.correct_bin)
+    await callback.message.answer(
+        ui.correct_bin_prompt(), parse_mode="HTML", reply_markup=ui.cancel_kb()
+    )
+
+
 @router.callback_query(F.data.startswith("flow:fix:"))
 async def cb_fix(callback: CallbackQuery, state: FSMContext) -> None:
     bin_arg = (callback.data or "").split(":", 2)[-1]
     if not bin_arg:
         await callback.answer("BIN missing", show_alert=True)
         return
+    await callback.answer()
     await state.set_state(Flow.correct_pick)
     await state.update_data(bin_arg=bin_arg)
     await callback.message.answer(
@@ -120,7 +131,6 @@ async def cb_fix(callback: CallbackQuery, state: FSMContext) -> None:
         parse_mode="HTML",
         reply_markup=ui.correct_fields_kb(bin_arg),
     )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "flow:bulk")

@@ -26,10 +26,17 @@ def is_admin(user_id: int, config: Config) -> bool:
     return bool(config.admin_id) and int(user_id) == int(config.admin_id)
 
 
+def _user_id(user: Any) -> int:
+    try:
+        return int(user["user_id"])
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
 def quota_decision(user: Any, kind: str, config: Config) -> dict[str, Any]:
     """Returns allowed + what to consume. Paywall fires only after the free allowance."""
     limit = config.free_bins_per_day if kind == "bin" else config.free_checks_per_day
-    if is_premium(user):
+    if is_admin(_user_id(user), config) or is_premium(user):
         return {"allowed": True, "consume": "premium", "limit": limit}
     used = int(user[f"free_{kind}"])
     credits = int(user["credits"])
@@ -63,7 +70,9 @@ def bin_key(bin_arg: str) -> str:
     return bin_arg[:8] if len(bin_arg) >= 8 else bin_arg
 
 
-def free_watermark(user: Any) -> bool:
+def free_watermark(user: Any, config: Config | None = None) -> bool:
+    if config is not None and is_admin(_user_id(user), config):
+        return False
     return not is_premium(user)
 
 
