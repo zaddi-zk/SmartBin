@@ -11,7 +11,7 @@ from aiogram.types import Message
 import ui
 from core.canaries import percentile
 from handlers.common import parse_bin_arg
-from models import utc_date, utcnow_iso
+from models import utc_date
 from render import DISPLAY_VERSION, FOOTER_PREFIX, status_block, status_header
 from states import Flow
 
@@ -51,17 +51,10 @@ async def _stats(runtime) -> dict:
             "SELECT COALESCE(SUM(amount_xtr),0) FROM receipts WHERE state='paid'", (), 0
         )
     )
-    premium = int(
-        await db.scalar(
-            "SELECT COUNT(*) FROM users WHERE premium_until > ?", (utcnow_iso(),), 0
-        )
-    )
     checks_today = int(all_stats.get(f"day:{utc_date()}:checks", 0))
     return {
         "uptime": runtime.uptime(),
-        "users": await db.count("users"),
         "monthly_users": await db.monthly_users(),
-        "premium": premium,
         "checks_today": checks_today,
         "cache_depth": runtime.store.depth(),
         "p50": int(percentile(latencies, 50)),

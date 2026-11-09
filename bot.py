@@ -13,6 +13,7 @@ sys.path.insert(0, 'smartbin')
 
 from config import Config
 from handlers import setup_routers
+from middleware.activity import ActivityMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 from miniapp.server import start_server
 from runtime import build_runtime, close_runtime
@@ -79,6 +80,11 @@ async def main() -> int:
     dp.message.outer_middleware(limiter)
     dp.callback_query.outer_middleware(limiter)
     dp.inline_query.outer_middleware(limiter)
+
+    activity = ActivityMiddleware()
+    dp.message.outer_middleware(activity)
+    dp.callback_query.outer_middleware(activity)
+    dp.inline_query.outer_middleware(activity)
 
     setup_routers(dp)
     dp.errors.register(on_error)

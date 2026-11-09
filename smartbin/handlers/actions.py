@@ -146,8 +146,12 @@ async def send_menu(message: Any, runtime: Any, user: Any = None) -> None:
         await message.delete()
     except:
         pass
+    try:
+        monthly_users = await runtime.db.monthly_users()
+    except Exception:
+        monthly_users = 0
     await message.answer(
-        ui.menu_text(runtime.config, db_user),
+        ui.menu_text(runtime.config, db_user, monthly_users),
         parse_mode="HTML",
         reply_markup=ui.dashboard_kb(admin, runtime.config.miniapp_base),
     )

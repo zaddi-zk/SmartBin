@@ -107,7 +107,6 @@ async def status_json(runtime: Any) -> dict[str, Any]:
     )
     return {
         "uptime": runtime.uptime(),
-        "users": await db.count("users"),
         "monthly_users": await db.monthly_users(),
         "checks_today": int(stats.get(f"day:{utc_date()}:checks", 0)),
         "cache_depth": runtime.store.depth(),
@@ -168,8 +167,10 @@ def create_app(runtime: Any) -> web.Application:
         return web.json_response(card_json(record, free=True))
 
     async def api_status(request: web.Request) -> web.Response:
-        if verify_init_data(_init_data(request), runtime.config.bot_token) is None:
+        pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
+        await _touch_user(runtime, pairs)
         return web.json_response(await status_json(runtime))
 
     async def api_reflink(request: web.Request) -> web.Response:

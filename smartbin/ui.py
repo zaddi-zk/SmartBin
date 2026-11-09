@@ -106,11 +106,12 @@ def dashboard_kb(admin: bool, miniapp_url: str = "") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def menu_text(config: Any, user: Any = None) -> str:
+def menu_text(config: Any, user: Any = None, monthly_users: int = 0) -> str:
     header = premium_emoji("SMARTBIN", config.premium_emoji_id)
     lines = [
         f"<b>{header}</b>  <code>v{config.display_version}</code>",
         "<blockquote>Card intelligence · cache-first metadata · measured 2FA · live verdicts</blockquote>",
+        f"📊  <b>{monthly_users:,} monthly users</b>",
         "",
         "🃏  <b>BIN Lookup</b> — metadata, sources, 2FA",
         "⚡  <b>Check Card</b> — auth-and-void verdict",

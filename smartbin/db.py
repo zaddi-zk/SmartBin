@@ -540,6 +540,21 @@ class DB:
         )
         return await self.count("users", "last_seen_utc >= ?", (cutoff,))
 
+    async def touch_user(
+        self, user_id: int, username: str = "", first_name: str = ""
+    ) -> None:
+        """Record activity, throttled to at most one write per hour per user."""
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        cutoff = (now_dt - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        await self.execute(
+            "INSERT INTO users(user_id, username, first_name, joined_utc, source_tag, quota_date, last_seen_utc) "
+            "VALUES (?,?,?,?,'',?,?) "
+            "ON CONFLICT(user_id) DO UPDATE SET last_seen_utc=excluded.last_seen_utc "
+            "WHERE users.last_seen_utc='' OR users.last_seen_utc < ?",
+            (user_id, username, first_name, now, today_utc(), now, cutoff),
+        )
+
     async def reset_quota_if_needed(self, user_id: int) -> Any:
         row = await self.get_user(user_id)
         if row is None:
