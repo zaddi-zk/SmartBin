@@ -8,22 +8,44 @@ One repo, one process, one entrypoint: `bot.py`.
 ## Requirements
 
 - Python 3.11+
-- SQLite with FTS5 (the stock Python build is enough)
-- No Docker, no database server
+- SQLite with FTS5 (the stock Python build is enough) **or** any Postgres 14+
+  database such as Supabase
+- No Docker required
 
 ## Setup
 
 ```bash
-cd smartbin
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-# edit .env: BOT_TOKEN and ADMIN_ID are required
+cp smartbin/.env.example smartbin/.env
+# edit smartbin/.env: BOT_TOKEN and ADMIN_ID are required
 python bot.py
 ```
 
 The process runs Telegram polling, the Mini App HTTP server, and the canary daemon together.
+
+## Database: SQLite or Supabase/Postgres
+
+By default the bot uses the SQLite file in `DB_PATH`. Set `DATABASE_URL` and the
+same code runs on Postgres/Supabase instead — no other changes needed. The schema
+is created automatically on first boot.
+
+```bash
+# Supabase dashboard -> Connect -> Session pooler / direct
+DATABASE_URL=postgresql://postgres.<project-ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
+```
+
+On Render, add `DATABASE_URL` as a secret environment variable and redeploy.
+To move the existing SQLite rows (users, payments/receipts, checks, bins, gates,
+proxies, corrections, stats) into Supabase:
+
+```bash
+DATABASE_URL='postgresql://...' python smartbin/tools/migrate_to_postgres.py \
+  --sqlite smartbin/smartbin.db
+```
+
+The migration is idempotent: re-running only fills in missing rows.
 
 ## Environment
 
@@ -32,6 +54,7 @@ The process runs Telegram polling, the Mini App HTTP server, and the canary daem
 | `BOT_TOKEN` | Telegram bot token |
 | `ADMIN_ID` | Numeric Telegram user id with admin access |
 | `DB_PATH` | SQLite file (default `smartbin.db`) |
+| `DATABASE_URL` | Supabase/Postgres URL; when set it overrides `DB_PATH` |
 | `MINIAPP_PORT` / `MINIAPP_BASE` | aiohttp bind port and public URL |
 | `STRIPE_API_KEY` | Stripe secret key for live mode |
 | `STRIPE_TEST_MODE` | `1` = deterministic test cards, no money |

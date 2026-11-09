@@ -39,7 +39,7 @@ RUNTIME: Runtime | None = None
 
 async def build_runtime(config: Config, offline: bool = False) -> Runtime:
     global RUNTIME
-    db = await DB(config.db_path).init()
+    db = await DB(config.db_path, database_url=config.database_url).init()
     sources = build_sources(offline=offline)
 
     async def source_proxy() -> str | None:

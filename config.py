@@ -7,7 +7,7 @@ from pathlib import Path
 DISPLAY_VERSION = "7.1.0"
 
 _ENV_KEYS = (
-    "BOT_TOKEN ADMIN_ID DB_PATH MINIAPP_PORT MINIAPP_BASE STRIPE_API_KEY "
+    "BOT_TOKEN ADMIN_ID DB_PATH DATABASE_URL MINIAPP_PORT MINIAPP_BASE STRIPE_API_KEY "
     "STRIPE_TEST_MODE CANARY_NONVBV CANARY_VBV CANARY_DEAD "
     "FREE_BINS_PER_DAY FREE_CHECKS_PER_DAY STARS_DAY STARS_MONTH "
     "STARS_CREDITS_500 CORRECTION_REWARD LRU_SIZE BIN_CACHE_DAYS "
@@ -18,8 +18,14 @@ _ENV_KEYS = (
 def load_env(path: str = ".env") -> dict[str, str]:
     """Read .env without any third-party dependency. Real env wins."""
     data: dict[str, str] = {}
-    p = Path(path)
-    if p.exists():
+    candidates = [path]
+    if not Path(path).exists():
+        # bot.py lives at the repo root while the bot package keeps its .env.
+        candidates += ["smartbin/.env", str(Path(__file__).with_name(".env"))]
+    for candidate in candidates:
+        p = Path(candidate)
+        if not p.exists():
+            continue
         for raw in p.read_text(encoding="utf-8").splitlines():
             line = raw.strip()
             if not line or line.startswith("#") or "=" not in line:
@@ -28,6 +34,8 @@ def load_env(path: str = ".env") -> dict[str, str]:
             key = key.strip()
             value = value.strip().strip('"').strip("'")
             data[key] = value
+        if data:
+            break
     for key in _ENV_KEYS:
         if key in os.environ:
             data[key] = os.environ[key]
@@ -53,6 +61,7 @@ class Config:
     bot_token: str = ""
     admin_id: int = 0
     db_path: str = "smartbin.db"
+    database_url: str = ""
     miniapp_port: int = 8877
     miniapp_base: str = "https://smartbin-eurr.onrender.com"
 
@@ -94,6 +103,7 @@ class Config:
             bot_token=env.get("BOT_TOKEN", ""),
             admin_id=_int(env, "ADMIN_ID", 0),
             db_path=env.get("DB_PATH", "smartbin.db"),
+            database_url=env.get("DATABASE_URL", "").strip(),
             miniapp_port=_int(env, "MINIAPP_PORT", 8877),
             miniapp_base=env.get("MINIAPP_BASE", "https://smartbin-eurr.onrender.com"),
             stripe_api_key=env.get("STRIPE_API_KEY", ""),

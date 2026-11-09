@@ -89,7 +89,7 @@ async def main() -> int:
         "event=boot version=%s miniapp_port=%s db=%s lru=%s",
         config.display_version,
         config.miniapp_port,
-        config.db_path,
+        "postgres" if config.database_url else config.db_path,
         runtime.store.depth(),
     )
     await configure_bot(bot, config)

@@ -13,6 +13,8 @@ services:
         sync: false
       - key: DB_PATH
         value: /home/render/smartbin.db
+      - key: DATABASE_URL
+        sync: false  # Supabase/Postgres URL; when set it overrides DB_PATH
       - key: MINIAPP_PORT
         value: "8080"
       - key: MINIAPP_BASE
