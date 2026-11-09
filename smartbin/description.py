@@ -8,10 +8,10 @@ log = logging.getLogger("smartbin.description")
 
 UPDATE_INTERVAL = 3600  # seconds between profile refreshes
 
-# Telegram clients differ in which field they render under the bot's name
-# (Bot Info popup vs. older clients). Set both fields for the default and
-# English variants so the count is guaranteed to appear there.
+# The long description is the line under the bot name; the short description
+# is the "(i) Description" row and the public t.me share preview.
 LANGUAGES: tuple[str | None, ...] = (None, "en")
+SHORT_DESCRIPTION = "CC Checker & Killer 🔪"
 
 
 async def update_description(bot: Any, runtime: Any) -> str | None:
@@ -34,7 +34,9 @@ async def update_description(bot: Any, runtime: Any) -> str | None:
                 "event=description_failed language=%s error=%s", language, exc
             )
         try:
-            await bot.set_my_short_description(short_description=text, **kwargs)
+            await bot.set_my_short_description(
+                short_description=SHORT_DESCRIPTION, **kwargs
+            )
         except Exception as exc:
             log.warning(
                 "event=short_description_failed language=%s error=%s", language, exc
