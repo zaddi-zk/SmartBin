@@ -115,7 +115,7 @@ class MonthlyUsersTest(unittest.TestCase):
     async def _run_description(self):
         from types import SimpleNamespace
 
-        from description import SHORT_DESCRIPTION, update_description
+        from description import update_description
 
         class FakeDB:
             async def monthly_users(self):
@@ -125,12 +125,12 @@ class MonthlyUsersTest(unittest.TestCase):
         runtime = SimpleNamespace(db=FakeDB())
         text = await update_description(bot, runtime)
         self.assertEqual(text, "5,746 monthly users")
-        # Long description is the line under the bot name.
+        # Both profile fields, default and English, carry the count so every
+        # Telegram client shows it under the bot name.
         self.assertEqual(bot.long[None], "5,746 monthly users")
         self.assertEqual(bot.long["en"], "5,746 monthly users")
-        # Short description is the profile row / share preview.
-        self.assertEqual(bot.short[None], SHORT_DESCRIPTION)
-        self.assertEqual(bot.short["en"], SHORT_DESCRIPTION)
+        self.assertEqual(bot.short[None], "5,746 monthly users")
+        self.assertEqual(bot.short["en"], "5,746 monthly users")
 
 
 if __name__ == "__main__":

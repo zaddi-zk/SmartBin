@@ -8,18 +8,14 @@ log = logging.getLogger("smartbin.description")
 
 UPDATE_INTERVAL = 3600  # seconds between profile refreshes
 
-# Telegram clients show the *long* description directly under the bot name
-# in the Bot Info popup, while the *short* description fills the
-# "(i) Description" row and the public t.me share preview. Card Venom uses
-# exactly this layout (its t.me preview is the marketing text, not the count).
+# Telegram clients differ in which field they render under the bot's name
+# (Bot Info popup vs. older clients). Set both fields for the default and
+# English variants so the count is guaranteed to appear there.
 LANGUAGES: tuple[str | None, ...] = (None, "en")
-SHORT_DESCRIPTION = (
-    "Card intelligence · cache-first metadata · measured 2FA · live verdicts"
-)
 
 
 async def update_description(bot: Any, runtime: Any) -> str | None:
-    """Publish the monthly-active-user count under the bot's name."""
+    """Publish the monthly-active-user count in the bot profile."""
     try:
         count = await runtime.db.monthly_users()
     except Exception as exc:
@@ -32,17 +28,13 @@ async def update_description(bot: Any, runtime: Any) -> str | None:
         if language:
             kwargs["language_code"] = language
         try:
-            # Long description: shown directly under the bot name.
             await bot.set_my_description(description=text, **kwargs)
         except Exception as exc:
             log.warning(
                 "event=description_failed language=%s error=%s", language, exc
             )
         try:
-            # Short description: the profile "Description" row / share preview.
-            await bot.set_my_short_description(
-                short_description=SHORT_DESCRIPTION, **kwargs
-            )
+            await bot.set_my_short_description(short_description=text, **kwargs)
         except Exception as exc:
             log.warning(
                 "event=short_description_failed language=%s error=%s", language, exc
