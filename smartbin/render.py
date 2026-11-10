@@ -7,7 +7,7 @@ from typing import Any, Mapping
 from core.reconciler import decay
 from models import BinRecord, CheckOutcome, utcnow
 
-DISPLAY_VERSION = "7.1.0"
+DISPLAY_VERSION = "7.2.1"
 FOOTER_PREFIX = "SMARTBIN"
 WATERMARK = "-- @SmartBlN_Bot"
 
@@ -304,26 +304,71 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     lines = [
         f"💎 <b>SMARTBIN BIN INTELLIGENCE</b>",
         f"🔢 <code>{bin8}</code>",
-        f"🏦 <b>ISSUER</b>  {bank}" + (f" <code>☎ {phone[:7]}...</code>" if phone else ""),
+    ]
+    
+    # Enhanced issuer line with multiple data points
+    issuer_parts = []
+    if bank and bank != "—":
+        issuer_parts.append(f"<b>{bank}</b>")
+    else:
+        # Fallback: show brand as issuer if bank unknown
+        issuer_parts.append(f"<b>{_label(brand)}</b> Issuer")
+    
+    # Add phone if available
+    if phone:
+        issuer_parts.append(f"<code>☎ {phone}</code>")
+    
+    # Add site if available
+    if site:
+        issuer_parts.append(f"<code>🌐 {site[:30]}</code>" if len(site) > 30 else f"<code>🌐 {site}</code>")
+    
+    lines.append(f"🏦 <b>ISSUER</b>  " + " · ".join(issuer_parts))
+    
+    lines.extend([
         type_line,
         f"🌍 <b>COUNTRY</b> {'🇺🇸' if iso2 == 'US' else '🌐'} <code>{_label(country)}</code> <i>({iso2 or 'XX'})</i>",
         f"💱 <b>CURRENCY</b> <code>{currency}</code> · <b>LENGTH</b> <code>{length}</code> · 🧮 <i>luhn valid</i>",
         f"💳 <b>FEATURES</b> PREPAID: <code>{'✅' if prepaid else '❌'}</code> · COMMERCIAL: <code>{'✅' if commercial else '❌'}</code> · ATM: <code>{'✅' if atm_debit else '❌'}</code>",
-    ]
-
+    ])
+    
+    # Separate lines for phone and site (clickable)
     if phone:
         lines.append(f"📞 <b>ISSUER PHONE</b> <a href='tel:{phone}'>{phone}</a>")
     if site:
         lines.append(f"🔗 <b>ISSUER SITE</b> <a href='{site}'>{site}</a>")
 
+    # Enhanced 3DS/AVS line with confidence
     twofa_label = _label(twofa)
-    lines.append(f"🔐 <b>3DS/AVS</b> {twofa_glyph} <code>{twofa_label}</code>{twofa_note} · <i>{twofa_reads} reads · {twofa_conf}% conf</i>")
-
+    conf_indicator = "🟢" if twofa_conf >= 80 else "🟡" if twofa_conf >= 50 else "🔴"
+    lines.append(f"🔐 <b>3DS/AVS</b> {twofa_glyph} <code>{twofa_label}</code>{twofa_note} · <i>{twofa_reads} reads · {conf_indicator} {twofa_conf}% conf</i>")
+    
+    # Add data freshness indicator
+    if verified:
+        try:
+            from datetime import datetime
+            verified_date = datetime.fromisoformat(verified.replace('Z', '+00:00'))
+            days_old = (now - verified_date).days
+            freshness = "🟢 FRESH" if days_old < 7 else "🟡 OK" if days_old < 30 else "🔴 OLD"
+            lines.append(f"📅 <b>DATA FRESHNESS</b> {freshness} · <i>verified {days_old}d ago</i>")
+        except Exception:
+            lines.append(f"📅 <b>DATA FRESHNESS</b> ⚪️ <i>unknown</i>")
+    
+    # Fleet stats with better formatting
     if fleet_n >= 5:
-        fleet_line = f"📊 FLEET   {fleet_n} checks · {GLYPH['LIVE']}{fleet_approved} · {GLYPH['SOFT_DECLINE']}{fleet_soft} · {GLYPH['DEAD']}{fleet_hard} · last 2h ago"
+        fleet_rate = round((fleet_approved / fleet_n) * 100) if fleet_n > 0 else 0
+        rate_color = "🟢" if fleet_rate >= 70 else "🟡" if fleet_rate >= 40 else "🔴"
+        fleet_line = f"📊 <b>FLEET STATS</b> {fleet_n} checks · {rate_color} {fleet_rate}% live · {GLYPH['LIVE']}{fleet_approved}/{GLYPH['SOFT_DECLINE']}{fleet_soft}/{GLYPH['DEAD']}{fleet_hard}"
         lines.append(fleet_line)
     elif fleet_n > 0:
-        lines.append(f"COLD BIN n={fleet_n}")
+        lines.append(f"📊 <b>FLEET STATS</b> <i>COLD BIN</i> n={fleet_n}")
+    
+    # Sources line
+    if sources and len(sources) > 0:
+        source_count = len(sources)
+        source_names = ", ".join(list(sources.keys())[:3])
+        if source_count > 3:
+            source_names += f" +{source_count - 3} more"
+        lines.append(f"📚 <b>SOURCES</b> <code>{source_names}</code> <i>({source_count} total)</i>")
 
     footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
     lines.append(footer)
