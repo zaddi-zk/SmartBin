@@ -195,12 +195,25 @@ async def _bot_username(runtime: Any) -> str:
 
 
 @web.middleware
-async def _no_store(request: web.Request, handler: Any) -> web.StreamResponse:
-    """Prevent Telegram/WebView caches from serving a stale or broken shell."""
+async def _cors_middleware(request: web.Request, handler: Any) -> web.StreamResponse:
+    """CORS and cache control middleware for Mini App."""
+    # Set CORS headers
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, X-Telegram-Init-Data",
+        "Access-Control-Max-Age": "86400",
+    }
+    
     try:
+        # Handle preflight
+        if request.method == "OPTIONS":
+            return web.Response(headers=cors_headers)
+        
         response = await handler(request)
     except web.HTTPException as exc:
         try:
+            exc.headers.update(cors_headers)
             exc.headers.setdefault("Cache-Control", "no-store")
         except Exception:
             pass
@@ -210,20 +223,24 @@ async def _no_store(request: web.Request, handler: Any) -> web.StreamResponse:
             "event=miniapp_unhandled path=%s error=%s", request.path, exc
         )
         response = web.json_response({"error": "server error"}, status=500)
+    
     try:
+        # Cache control
         response.headers["Cache-Control"] = (
             "no-store, no-cache, must-revalidate, max-age=0"
         )
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
         response.headers["X-Content-Type-Options"] = "nosniff"
+        # CORS
+        response.headers.update(cors_headers)
     except Exception:
         pass
     return response
 
 
 def create_app(runtime: Any) -> web.Application:
-    app = web.Application(middlewares=[_no_store])
+    app = web.Application(middlewares=[_cors_middleware])
     app["runtime"] = runtime
 
     async def index(request: web.Request) -> web.StreamResponse:
@@ -299,8 +316,94 @@ def create_app(runtime: Any) -> web.Application:
         ref_link = f"https://t.me/{bot_username}?start=ref_{user_id}" if user_id else ""
         return web.json_response({"ref_link": ref_link})
 
+    async def api_check(request: web.Request) -> web.Response:
+        """Card check endpoint for Mini App."""
+        try:
+            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
+        except Exception as exc:
+            log.warning("event=miniapp_verify_failed error=%s", exc)
+            pairs = None
+        if pairs is None:
+            return web.json_response({"error": "unauthorized"}, status=401)
+        await _safe_touch(runtime, pairs)
+
+        try:
+            body = await request.json()
+        except Exception:
+            return web.json_response({"error": "invalid json"}, status=400)
+
+        card_raw = body.get("card", "").strip()
+        amount = body.get("amount", 1.0)
+
+        if not card_raw or "|" not in card_raw:
+            return web.json_response({"error": "invalid card format"}, status=400)
+
+        from models import Card
+        try:
+            card = Card.parse(card_raw)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=400)
+
+        # Check user credits
+        user_data = _init_user(pairs)
+        user_id = user_data.get("id")
+        if not user_id:
+            return web.json_response({"error": "user not found"}, status=401)
+
+        db_user = await runtime.db.get_user(user_id)
+        if not db_user:
+            return web.json_response({"error": "user not in database"}, status=401)
+
+        if int(db_user["credits"]) < 1:
+            return web.json_response({"error": "insufficient credits"}, status=402)
+
+        # Run check
+        try:
+            outcome = await runtime.runner.run(user_id, card_raw, purpose="check")
+            
+            # Deduct credit
+            await runtime.db.user_spend(user_id, 1)
+            
+            # Get updated credits
+            db_user = await runtime.db.get_user(user_id)
+            credits = int(db_user["credits"])
+            
+            return web.json_response({
+                "live": outcome.live,
+                "approved": outcome.live,
+                "verdict": outcome.verdict,
+                "message": outcome.message,
+                "latency_ms": outcome.latency_ms,
+                "credits": credits,
+                "card": card.masked()
+            })
+        except Exception as exc:
+            log.warning("event=miniapp_check_failed card=%s error=%s", card.masked(), exc)
+            return web.json_response({"error": "check failed"}, status=503)
+
     async def health(request: web.Request) -> web.Response:
-        return web.json_response({"ok": True, "version": DISPLAY_VERSION, "time": utcnow_iso()})
+        """Health check with canary status."""
+        try:
+            canary_24h = runtime.canary.stats_24h()
+            latency_p50 = runtime.canary.latency_p50()
+            
+            return web.json_response({
+                "status": "healthy",
+                "version": DISPLAY_VERSION,
+                "time": utcnow_iso(),
+                "canary_24h": {
+                    "total": canary_24h.total if canary_24h else 0,
+                    "successful": canary_24h.successful if canary_24h else 0
+                },
+                "latency_p50": latency_p50
+            })
+        except Exception as exc:
+            log.warning("event=miniapp_health_failed error=%s", exc)
+            return web.json_response({
+                "status": "degraded",
+                "version": DISPLAY_VERSION,
+                "time": utcnow_iso()
+            })
 
     app.router.add_get("/", index)
     app.router.add_get("/favicon.ico", favicon)
@@ -308,6 +411,7 @@ def create_app(runtime: Any) -> web.Application:
     app.router.add_get("/api/status", api_status)
     app.router.add_post("/api/status", api_status)
     app.router.add_get("/api/reflink", api_reflink)
+    app.router.add_post("/api/check", api_check)
     app.router.add_get("/api/health", health)
     return app
 

@@ -405,15 +405,34 @@
 
     <script>
         // Initialize Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.expand();
+        let tg;
+        try {
+            tg = window.Telegram.WebApp;
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                
+                // Set colors from Telegram
+                if (tg.backgroundColor) {
+                    document.documentElement.style.setProperty('--bg-primary', tg.backgroundColor);
+                }
+                if (tg.textColor) {
+                    document.documentElement.style.setProperty('--text-primary', tg.textColor);
+                }
+            }
+        } catch (err) {
+            console.warn('Telegram WebApp not available, running in standalone mode');
+            tg = {
+                expand: () => {},
+                ready: () => {},
+                initDataUnsafe: { user: null },
+                openTelegramLink: (url) => window.open(url, '_blank'),
+                mainButton: { text: '', color: '', textColor: '', show: () => {}, hide: () => {} }
+            };
+        }
         
-        // Set colors from Telegram
-        document.documentElement.style.setProperty('--bg-primary', tg.backgroundColor || '#0a0a0f');
-        document.documentElement.style.setProperty('--text-primary', tg.textColor || '#ffffff');
-        
-        // API Base URL
-        const API_BASE = window.location.origin;
+        // API Base URL - detect properly
+        const API_BASE = window.location.origin || 'https://smartbin-eurr.onrender.com';
         
         // User data
         let userData = {
@@ -440,22 +459,41 @@
         // Load user data
         async function loadUserData() {
             try {
-                const response = await fetch(`${API_BASE}/api/status`);
-                const data = await response.json();
-                if (data.user) {
-                    userData.credits = parseInt(data.user.credits) || 0;
-                    document.getElementById('creditsDisplay').textContent = userData.credits.toLocaleString();
-                    document.getElementById('userInfo').style.display = 'block';
-                    
-                    if (userData.username) {
-                        document.getElementById('usernameDisplay').textContent = '@' + userData.username;
-                    }
-                    
-                    if (data.user.is_premium) {
-                        document.getElementById('planDisplay').textContent = '💎 Premium';
-                        document.getElementById('planDisplay').style.color = 'var(--gold-primary)';
-                    }
+                const initParams = new URLSearchParams(window.location.search);
+                const init_data = initParams.get('init_data') || '';
+                
+                const headers = {};
+                if (init_data) {
+                    headers['X-Telegram-Init-Data'] = init_data;
                 }
+                
+                const response = await fetch(`${API_BASE}/api/status`, {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                if (!response.ok) {
+                    console.warn('Status check failed:', response.status);
+                    return;
+                }
+                
+                const data = await response.json();
+                
+                // Update credits from Telegram user data if available
+                if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                    userData.id = tg.initDataUnsafe.user.id;
+                    userData.username = tg.initDataUnsafe.user.username;
+                    userData.firstName = tg.initDataUnsafe.user.first_name;
+                }
+                
+                // Show user info
+                document.getElementById('userInfo').style.display = 'block';
+                if (userData.username) {
+                    document.getElementById('usernameDisplay').textContent = '@' + userData.username;
+                } else if (userData.firstName) {
+                    document.getElementById('usernameDisplay').textContent = userData.firstName;
+                }
+                
             } catch (error) {
                 console.error('Failed to load user data:', error);
             }
@@ -505,6 +543,17 @@
             document.getElementById(tabId).classList.add('active');
         }
         
+        // Get init data for API calls
+        function getInitHeaders() {
+            const headers = {};
+            const initParams = new URLSearchParams(window.location.search);
+            const init_data = initParams.get('init_data') || '';
+            if (init_data) {
+                headers['X-Telegram-Init-Data'] = init_data;
+            }
+            return headers;
+        }
+        
         // BIN Lookup
         async function lookupBIN() {
             const bin = document.getElementById('binInput').value.trim();
@@ -517,7 +566,10 @@
             resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-text">🔍 Looking up BIN...</div></div>';
             
             try {
-                const response = await fetch(`${API_BASE}/api/bin?bin=${encodeURIComponent(bin)}`);
+                const headers = getInitHeaders();
+                const response = await fetch(`${API_BASE}/api/bin?bin=${encodeURIComponent(bin)}`, {
+                    headers: headers
+                });
                 const data = await response.json();
                 
                 if (data.error) {
@@ -563,7 +615,50 @@
                             </div>
                             <div class="result-row">
                                 <span class="result-label">🔒 2FA Available</span>
-                                <span class="result-value">${binData['2fa'] ? '✅ Yes' : '❌ No'}</span>
+                                <span class="result-value">${binData.twofa ? '✅ Yes' : '❌ No'}</span>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.bin) {
+                    // Direct response format
+                    const binData = data;
+                    resultDiv.innerHTML = `
+                        <div class="result-card">
+                            <div class="result-header">
+                                <span class="result-title">🃏 BIN Information</span>
+                                <span class="result-status status-live">✅ Found</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🏦 Brand</span>
+                                <span class="result-value gold">${binData.brand || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🏛️ Bank</span>
+                                <span class="result-value">${binData.bank || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🌍 Country</span>
+                                <span class="result-value">${binData.country || 'N/A'} ${binData.iso2 ? '📍 ' + binData.iso2 : ''}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">💱 Currency</span>
+                                <span class="result-value">${binData.currency || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">⭐ Level</span>
+                                <span class="result-value">${binData.level || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">📱 Phone Format</span>
+                                <span class="result-value">${binData.phone || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">💳 Prepaid</span>
+                                <span class="result-value">${binData.prepaid ? '✅ Yes' : '❌ No'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🔒 2FA Available</span>
+                                <span class="result-value">${binData.twofa ? '✅ Yes' : '❌ No'}</span>
                             </div>
                         </div>
                     `;
@@ -587,11 +682,22 @@
             resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-text">⚡ Checking card...</div></div>';
             
             try {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...getInitHeaders()
+                };
+                
                 const response = await fetch(`${API_BASE}/api/check`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: headers,
                     body: JSON.stringify({ card: card, amount: parseFloat(amount) })
                 });
+                
+                if (!response.ok) {
+                    const errData = await response.json().catch(() => ({}));
+                    throw new Error(errData.error || 'Check failed');
+                }
+                
                 const data = await response.json();
                 
                 if (data.error) {
@@ -665,11 +771,22 @@
                 let totalLatency = 0;
                 
                 for (let i = 0; i < 5; i++) {
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...getInitHeaders()
+                    };
+                    
                     const response = await fetch(`${API_BASE}/api/check`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ card: card })
                     });
+                    
+                    if (!response.ok) {
+                        const errData = await response.json().catch(() => ({}));
+                        throw new Error(errData.error || 'Kill attempt failed');
+                    }
+                    
                     const data = await response.json();
                     
                     const isLive = data.live || data.approved;
@@ -766,11 +883,21 @@
                 let approved = 0;
                 
                 for (const card of cards.slice(0, 20)) {
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...getInitHeaders()
+                    };
+                    
                     const response = await fetch(`${API_BASE}/api/check`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: headers,
                         body: JSON.stringify({ card: card.trim() })
                     });
+                    
+                    if (!response.ok) {
+                        continue; // Skip failed checks
+                    }
+                    
                     const data = await response.json();
                     
                     const isLive = data.live || data.approved;
