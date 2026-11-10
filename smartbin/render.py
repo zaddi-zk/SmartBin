@@ -245,6 +245,291 @@ def check_result_block(
     return "<pre>" + "\n".join(lines) + "</pre>"
 
 
+# §3.3 SHOP BUYER FORMAT — optimized for card buyers
+def _match_glyph(match: str) -> str:
+    """Address match indicator."""
+    match_upper = match.upper() if match else ""
+    if match_upper in ("MATCH", "YES", "TRUE"):
+        return "🟢"
+    elif match_upper in ("MISMATCH", "NO", "FALSE", "PARTIAL"):
+        return "🟤"
+    return "—"
+
+
+def _call_line(outcome: Any, record: dict) -> tuple[str, str]:
+    """
+    Decision call based on flags. Returns (call, reason).
+    
+    KILL → SKIP
+    WARN → MAYBE  
+    NONE → BUY
+    """
+    kill, warn = [], []
+    
+    verdict = outcome.verdict if hasattr(outcome, 'verdict') else str(getattr(outcome, 'verdict', ''))
+    
+    # KILL flags (force SKIP)
+    if verdict in ("EXPIRED", "INVALID", "PICKUP", "LOST-STOLEN"):
+        kill.append(verdict.lower().replace("-", " "))
+    
+    if record.get("prepaid") and getattr(outcome, "avs_posture", "") == "strict":
+        kill.append("prepaid on AVS-strict")
+    
+    # Country mismatch check
+    iso2 = str(record.get("iso2") or "").upper()
+    billing_country = getattr(outcome, "billing_country", "")
+    proxy_matched = getattr(outcome, "proxy_country_matched", False)
+    if iso2 and billing_country and iso2 != billing_country and not proxy_matched:
+        kill.append("country mismatch")
+    
+    # Two hard declines on clean gates
+    hard_declines = getattr(outcome, "hard_decline_count", 0)
+    if hard_declines >= 2:
+        kill.append("multiple hard declines")
+    
+    # WARN flags (MAYBE)
+    if verdict == "CVV-FAIL":
+        warn.append("CVV mismatch")
+    
+    twofa = str(record.get("twofa") or getattr(outcome, "twofa_read", "")).upper()
+    if twofa in ("VBV", "PARTIAL", "3DS-CHALLENGE", "CHALLENGED"):
+        warn.append("3DS enrolled")
+    
+    state_mismatch = getattr(outcome, "state_mismatch", False)
+    if state_mismatch:
+        warn.append("state mismatch")
+    
+    if record.get("commercial"):
+        warn.append("commercial")
+    
+    bin_age = int(record.get("bin_age") or 0)
+    if bin_age > 0 and bin_age < 1:  # Less than 1 year
+        warn.append("new BIN")
+    
+    # Low confidence check
+    confs = _json(record.get("field_conf_json") or {})
+    if any(c < 60 for c in confs.values() if isinstance(c, (int, float))):
+        warn.append("low confidence")
+    
+    # Hit rate check
+    hit_n = int(record.get("fleet_checks_30d") or 0)
+    hit_approved = int(record.get("fleet_approved") or 0)
+    if hit_n >= 20:
+        hit_rate = hit_approved / hit_n if hit_n > 0 else 0
+        if hit_rate < 0.40:
+            warn.append("low hit rate")
+    
+    # Return decision
+    if kill:
+        return "🛑 SKIP", " · ".join(kill[:2])
+    if warn:
+        return "⚡ MAYBE", " · ".join(warn[:2])
+    return "⚡ BUY", "clean geo, no kill flags"
+
+
+def shop_buyer_block(
+    outcome: Any,
+    card: Any = None,
+    bin_record: Any = None,
+    free: bool = False,
+    now: datetime | None = None,
+    gate_label: str = "G01",
+) -> str:
+    """
+    Render shop-buyer focused check result.
+    
+    Optimized for buyers who already know brand/bank/level from listing.
+    Focus: will it die, will it fight, does address match, hit rate.
+    
+    14-17 lines total, call on line 3.
+    """
+    now = _now(now)
+    d = _dict(bin_record or {})
+    
+    # Extract data
+    bin8 = str(d.get("bin") or getattr(card, "bin8", "UNKNOWN"))
+    brand = str(d.get("brand") or "UNKNOWN").upper()
+    level = str(d.get("level") or "UNKNOWN").upper()
+    card_type = str(d.get("card_type") or "UNKNOWN").upper()
+    bank = str(d.get("bank") or "Unknown").strip()
+    iso2 = str(d.get("iso2") or "").upper()
+    
+    prepaid = bool(int(d.get("prepaid") or 0))
+    commercial = bool(int(d.get("commercial") or 0))
+    atm_debit = bool(int(d.get("atm_debit") or 0))
+    avs_support = bool(int(d.get("avs") or 0))
+    
+    twofa = str(d.get("twofa") or getattr(outcome, "twofa_read", "UNKNOWN"))
+    twofa_reads = int(d.get("twofa_reads") or getattr(outcome, "twofa_reads", 0))
+    twofa_conf = int(d.get("twofa_conf") or getattr(outcome, "twofa_conf", 0))
+    
+    bin_age = int(d.get("bin_age") or 0)
+    card_length = int(d.get("card_length") or 16)
+    
+    # Verdict & live status
+    verdict = outcome.verdict if hasattr(outcome, 'verdict') else str(getattr(outcome, 'verdict', 'UNKNOWN'))
+    live = outcome.live if hasattr(outcome, 'live') else bool(getattr(outcome, 'live', False))
+    latency = int(outcome.latency_ms or getattr(outcome, 'latency_ms', 0))
+    
+    # Determine status badge
+    if live and verdict == "APPROVED":
+        status_badge = "🟩 CORROBORATED"
+    elif live:
+        status_badge = "🟨 PARTIAL"
+    else:
+        status_badge = "🟩 CORROBORATED"  # Dead but confirmed
+    
+    # Verdict line
+    if live and verdict == "APPROVED":
+        verdict_line = f"🟩 LIVE · APPROVED · {latency}ms · {gate_label.upper()}"
+    elif live:
+        verdict_line = f"🟩 LIVE · {verdict} · {latency}ms · {gate_label.upper()}"
+    else:
+        verdict_line = f"🟥 DEAD · {verdict} · {latency}ms · {gate_label.upper()}"
+    
+    # Call line (line 3)
+    call, call_reason = _call_line(outcome, d)
+    
+    # Address match data
+    billing_zip = getattr(card, "zip", "") or str(d.get("zip") or "")
+    billing_state = getattr(card, "state", "") or str(d.get("state") or "")
+    billing_city = getattr(card, "city", "") or str(d.get("city") or "")
+    
+    # AVS results
+    avs_postal = getattr(outcome, "avs_postal", "UNCHECKED")
+    avs_street = getattr(outcome, "avs_street", "UNCHECKED")
+    
+    zip_match = _match_glyph(avs_postal)
+    state_match = _match_glyph(getattr(outcome, "state_match", "UNKNOWN"))
+    city_match = _match_glyph(getattr(outcome, "city_match", "UNKNOWN"))
+    
+    # 3DS glyph
+    twofa_upper = twofa.upper().replace("*", "")
+    twofa_glyph_map = {
+        "NON-VBV": "🟦",
+        "FRICTIONLESS": "✅",
+        "CHALLENGED": "🔐",
+        "EXEMPTED": "🛡️",
+        "UNKNOWN": "❔",
+    }
+    twofa_glyph = twofa_glyph_map.get(twofa_upper, "❔")
+    
+    # Fleet stats
+    hit_n = int(d.get("fleet_checks_30d") or 0)
+    hit_approved = int(d.get("fleet_approved") or 0)
+    
+    if hit_n >= 5:
+        hit_rate = round((hit_approved / hit_n) * 100) if hit_n > 0 else 0
+        hit_line = f"📊 HIT    {hit_approved}/{hit_n} ({hit_rate}%) · 30d"
+    elif hit_n > 0:
+        hit_line = f"📊 HIT    cold (n={hit_n})"
+    else:
+        hit_line = f"📊 HIT    no data"
+    
+    # Confidence scores
+    confs = _json(d.get("field_conf_json") or {})
+    brand_conf = int(confs.get("brand", 0) or 0)
+    bank_conf = int(confs.get("bank", 0) or 0)
+    level_conf = int(confs.get("level", 0) or 0)
+    geo_conf = int(confs.get("country", 0) or 0)
+    
+    level_conf_indicator = "" if level_conf >= 80 else "🟨" if level_conf >= 60 else "🔴"
+    
+    # Sources
+    sources = _json(d.get("sources_json") or {})
+    source_list = ", ".join(list(sources.keys())[:3]) if sources else "internal"
+    source_count = len(sources) if sources else 1
+    
+    # Build flags list
+    kill_flags, warn_flags = [], []
+    
+    if verdict in ("EXPIRED", "INVALID", "PICKUP"):
+        kill_flags.append(f"🔴 {verdict.lower().replace('-', ' ')}")
+    if prepaid and getattr(outcome, "avs_posture", "") == "strict":
+        kill_flags.append("🔴 prepaid on AVS-strict")
+    
+    if verdict == "CVV-FAIL":
+        warn_flags.append("🟠 CVV mismatch")
+    if twofa_upper in ("VBV", "CHALLENGED"):
+        warn_flags.append("🟠 3DS enrolled")
+    if getattr(outcome, "state_mismatch", False):
+        warn_flags.append("🟠 state mismatch")
+    
+    all_flags = kill_flags + warn_flags
+    flags_line = "🚩 FLAGS  none" if not all_flags else "🚩 FLAGS  " + " · ".join(all_flags)
+    
+    # Card type line (brand/bank/level on ONE line)
+    brand_glyph = _brand_glyph(brand)
+    type_display = f"{brand_glyph} {brand} · {level.lower()} · {card_type.lower()} · {bank}" if bank and bank != "Unknown" else f"{brand_glyph} {brand} · {level.lower()} · {card_type.lower()}"
+    
+    # Build lines
+    lines = [
+        f"🧬 {FOOTER_PREFIX} · {bin8:<25} {status_badge}",
+        verdict_line,
+        f"{call} — {call_reason}",
+        "━" * 50,
+        f"💳 {type_display}",
+    ]
+    
+    # Geo line (only if billing address provided)
+    if billing_zip or billing_state:
+        geo_str = f"{billing_state or ''} {billing_zip or ''}".strip()
+        geo_flag = "🇺🇸" if iso2 == "US" else "🌐"
+        lines.append(f"📍 GEO    {geo_str} → BIN {iso2 or 'XX'} 🟢")
+        lines.append(f"🗺️ MATCH  zip {zip_match} · state {state_match} · city {city_match}")
+    
+    # 3DS line
+    twofa_display = twofa.replace("*", "").replace("-", " ")
+    lines.append(f"🔐 3DS    {twofa_glyph} {twofa_display} · {twofa_reads} reads · conf {twofa_conf}")
+    
+    # AVS line
+    avs_strict = getattr(outcome, "avs_posture", "") == "strict"
+    lines.append(f"🔒 AVS    {'YES' if avs_support else 'NO'} · {'strict' if avs_strict else 'attach full address'}")
+    
+    # Kind line
+    kind_parts = []
+    if prepaid:
+        kind_parts.append("prepaid YES")
+    else:
+        kind_parts.append("prepaid NO")
+    kind_parts.append(f"comm {'YES' if commercial else 'NO'}")
+    kind_parts.append(f"debit {'YES' if atm_debit else 'NO'}")
+    lines.append(f"🪙 KIND   {' · '.join(kind_parts)}")
+    
+    # PAN line
+    age_str = f"{bin_age}y" if bin_age > 0 else "unknown"
+    lines.append(f"📏 PAN    {card_length} · age {age_str}")
+    
+    lines.append("━" * 50)
+    
+    # Flags
+    lines.append(flags_line)
+    
+    # Hit rate
+    lines.append(hit_line)
+    
+    # Confidence
+    conf_line = f"📊 CONF   brand {brand_conf} · bank {bank_conf} · level {level_conf}{level_conf_indicator} · geo {geo_conf}"
+    lines.append(conf_line)
+    
+    # Sources
+    lines.append(f"📖 SOURCE {source_list} · sample {source_count}")
+    
+    # Seen
+    lines.append(f"🕐 SEEN   today · {'live' if live else 'dead'} · {gate_label.upper()}")
+    
+    lines.append("━" * 50)
+    
+    # Footer
+    footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · {now.strftime('%Y-%m-%d')} · @SmartBin_Bot"
+    lines.append(footer)
+    
+    if free:
+        lines.insert(-1, WATERMARK)
+    
+    return "\n".join(lines)
+
+
 # §3.2 BIN CARD — /bin, inline, mini app (PRO EDITION)
 def bin_card_block(record: Any, free: bool = False, now: datetime | None = None) -> str:
     """Render v7.2.1 PRO BIN Intelligence card — complete data display."""

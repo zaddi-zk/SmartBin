@@ -11,7 +11,7 @@ from handlers.common import (
     quota_decision,
 )
 from models import Card, utc_date
-from render import card_block, verdict_block, verdict_header
+from render import card_block, verdict_block, verdict_header, shop_buyer_block
 
 
 async def gate_view(runtime: Any, gate_name: str) -> tuple[str, dict]:
@@ -125,12 +125,19 @@ async def run_check_and_render(
             )
     await mark_first(runtime.db, "first_check")
     gate_label, health = await gate_view(runtime, outcome.gate)
+    
+    # Get BIN record for shop_buyer_block
+    bin_record = await runtime.store.get(parsed.bin8)
+    
+    # Use new shop-buyer focused format
+    result_text = shop_buyer_block(
+        outcome, parsed, bin_record, 
+        free=free_watermark(db_user, runtime.config), 
+        gate_label=gate_label
+    )
+    
     await message.answer(
-        verdict_header(outcome, health, gate_label)
-        + "\n"
-        + verdict_block(
-            outcome, parsed, free=free_watermark(db_user, runtime.config), gate_label=gate_label
-        ),
+        result_text,
         parse_mode="HTML",
         reply_markup=ui.verdict_kb(parsed.bin8),
     )
