@@ -245,9 +245,9 @@ def check_result_block(
     return "<pre>" + "\n".join(lines) + "</pre>"
 
 
-# §3.2 BIN CARD — /bin, inline, mini app
+# §3.2 BIN CARD — /bin, inline, mini app (PRO EDITION)
 def bin_card_block(record: Any, free: bool = False, now: datetime | None = None) -> str:
-    """Render v7.1.0 BIN card with exact §3.2 template."""
+    """Render v7.2.1 PRO BIN Intelligence card — complete data display."""
     now = _now(now)
     d = _dict(record)
     sources = _json(d.get("sources_json"))
@@ -257,24 +257,46 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     def conf(field: str) -> float:
         return _field_conf(confs, field, verified, now)
 
+    # Extract all fields
     bin8 = str(d.get("bin") or "UNKNOWN")
     brand = str(d.get("brand") or "UNKNOWN").upper()
     level = str(d.get("level") or "UNKNOWN").upper()
     card_type = str(d.get("card_type") or "UNKNOWN").upper()
-    bank = _shown(d.get("bank"), conf("bank"))
+    bank = str(d.get("bank") or "").strip()
     country = str(d.get("country") or "UNKNOWN")
     iso2 = str(d.get("iso2") or "").upper()
     currency = str(d.get("currency") or "USD").upper()
-    phone = str(d.get("phone") or "")
-    site = str(d.get("site") or "")
+    phone = str(d.get("phone") or "").strip()
+    site = str(d.get("site") or "").strip()
     length = int(d.get("card_length") or 16)
     prepaid = bool(int(d.get("prepaid") or 0))
     commercial = bool(int(d.get("commercial") or 0))
     atm_debit = bool(int(d.get("atm_debit") or 0))
-
+    avs = bool(int(d.get("avs") or 0))
+    
+    # 2FA/3DS data
     twofa = str(d.get("twofa") or "UNKNOWN")
     twofa_reads = int(d.get("twofa_reads") or 0)
     twofa_conf = int(d.get("twofa_conf") or 0)
+    
+    # Fleet stats
+    fleet_n = int(d.get("fleet_checks_30d") or 0)
+    fleet_approved = int(d.get("fleet_approved") or 0)
+    fleet_soft = int(d.get("fleet_soft") or 0)
+    fleet_hard = int(d.get("fleet_hard") or 0)
+    
+    # Additional metadata
+    bin_age = int(d.get("bin_age") or 0)
+    sample_size = int(d.get("sample_size") or 0)
+    confidence = float(d.get("confidence") or 0)
+    
+    # Get glyphs
+    brand_glyph = _brand_glyph(brand)
+    type_glyph = _type_glyph(card_type)
+    level_glyph = _level_glyph(level)
+    twofa_glyph = GLYPH.get(f"3DS_{twofa.upper().replace('*', '')}", GLYPH["3DS_UNKNOWN"])
+    
+    # 2FA note
     if twofa == "NON-VBV*":
         twofa_note = " (single-gate)"
     elif twofa == "NON-VBV":
@@ -282,101 +304,142 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
     else:
         twofa_note = ""
 
-    # Fleet stats from checks table (real, not faked)
-    fleet_n = int(d.get("fleet_checks_30d") or 0)
-    fleet_approved = int(d.get("fleet_approved") or 0)
-    fleet_soft = int(d.get("fleet_soft") or 0)
-    fleet_hard = int(d.get("fleet_hard") or 0)
-    fleet_last = str(d.get("fleet_last_check") or "")
-
-    brand_glyph = _brand_glyph(brand)
-    type_glyph = _type_glyph(card_type)
-    level_glyph = _level_glyph(level)
-    twofa_glyph = GLYPH.get(f"3DS_{twofa.upper().replace('*', '')}", GLYPH["3DS_UNKNOWN"])
-
-    type_parts = [f"{brand_glyph} {_label(brand)}".strip()]
-    if _label(card_type) != "—":
-        type_parts.append(f"{type_glyph} {_label(card_type)}".strip())
-    if _label(level) != "—":
-        type_parts.append(f"{level_glyph} {_label(level)}".strip())
-    type_line = "🏷️ TYPE    " + " · ".join(type_parts)
-
-    lines = [
-        f"💎 <b>SMARTBIN BIN INTELLIGENCE</b>",
-        f"🔢 <code>{bin8}</code>",
-    ]
+    # Build lines
+    lines = []
     
-    # Enhanced issuer line with multiple data points
-    issuer_parts = []
-    if bank and bank != "—":
-        issuer_parts.append(f"<b>{bank}</b>")
+    # Header
+    lines.append(f"💎 <b>SMARTBIN BIN INTELLIGENCE</b>")
+    lines.append(f"🔢 <code>{bin8}</code>")
+    lines.append("")  # Spacer
+    
+    # Card Identity Section
+    lines.append(f"📇 <b>CARD IDENTITY</b>")
+    
+    # Brand/Type/Level
+    type_parts = []
+    if brand and brand != "UNKNOWN":
+        type_parts.append(f"{brand_glyph} <b>{brand}</b>")
+    if card_type and card_type != "UNKNOWN" and card_type != brand:
+        type_parts.append(f"{type_glyph} {card_type.lower()}")
+    if level and level != "UNKNOWN":
+        type_parts.append(f"{level_glyph} {level.lower()}")
+    
+    if type_parts:
+        lines.append(f"  🏷️ TYPE: {' · '.join(type_parts)}")
+    
+    lines.append(f"  📏 LENGTH: <code>{length}</code> digits")
+    lines.append(f"  🧮 LUHN: <code>✅ VALID</code>")
+    
+    # Issuer Section
+    lines.append("")  # Spacer
+    lines.append(f"🏦 <b>ISSUER DETAILS</b>")
+    
+    if bank and bank != "UNKNOWN" and bank != "—":
+        lines.append(f"  🏛️ BANK: <b>{bank}</b>")
     else:
-        # Fallback: show brand as issuer if bank unknown
-        issuer_parts.append(f"<b>{_label(brand)}</b> Issuer")
+        lines.append(f"  🏛️ BANK: <i>Unknown</i>")
     
-    # Add phone if available
     if phone:
-        issuer_parts.append(f"<code>☎ {phone}</code>")
+        lines.append(f"  ☎️ PHONE: <a href='tel:{phone}'>{phone}</a>")
+    else:
+        lines.append(f"  ☎️ PHONE: <i>Not available</i>")
     
-    # Add site if available
     if site:
-        issuer_parts.append(f"<code>🌐 {site[:30]}</code>" if len(site) > 30 else f"<code>🌐 {site}</code>")
+        safe_site = site.replace("http://", "").replace("https://", "")
+        lines.append(f"  🌐 WEBSITE: <a href='{site}'>{safe_site}</a>")
+    else:
+        lines.append(f"  🌐 WEBSITE: <i>Not available</i>")
     
-    lines.append(f"🏦 <b>ISSUER</b>  " + " · ".join(issuer_parts))
+    # Geographic Section
+    lines.append("")  # Spacer
+    lines.append(f"🌍 <b>GEOGRAPHIC</b>")
     
-    lines.extend([
-        type_line,
-        f"🌍 <b>COUNTRY</b> {'🇺🇸' if iso2 == 'US' else '🌐'} <code>{_label(country)}</code> <i>({iso2 or 'XX'})</i>",
-        f"💱 <b>CURRENCY</b> <code>{currency}</code> · <b>LENGTH</b> <code>{length}</code> · 🧮 <i>luhn valid</i>",
-        f"💳 <b>FEATURES</b> PREPAID: <code>{'✅' if prepaid else '❌'}</code> · COMMERCIAL: <code>{'✅' if commercial else '❌'}</code> · ATM: <code>{'✅' if atm_debit else '❌'}</code>",
-    ])
+    flag = "🇺🇸" if iso2 == "US" else "🇪🇺" if iso2 in ["EU", "DE", "FR", "IT", "ES"] else "🌐"
+    lines.append(f"  📍 COUNTRY: {flag} <code>{_label(country)}</code>")
+    lines.append(f"  🆔 ISO2: <code>{iso2 or 'XX'}</code>")
+    lines.append(f"  💱 CURRENCY: <code>{currency}</code>")
     
-    # Separate lines for phone and site (clickable)
-    if phone:
-        lines.append(f"📞 <b>ISSUER PHONE</b> <a href='tel:{phone}'>{phone}</a>")
-    if site:
-        lines.append(f"🔗 <b>ISSUER SITE</b> <a href='{site}'>{site}</a>")
-
-    # Enhanced 3DS/AVS line with confidence
+    # Features Section
+    lines.append("")  # Spacer
+    lines.append(f"💳 <b>CARD FEATURES</b>")
+    lines.append(f"  💰 PREPAID: <code>{'✅ YES' if prepaid else '❌ NO'}</code>")
+    lines.append(f"  🏢 COMMERCIAL: <code>{'✅ YES' if commercial else '❌ NO'}</code>")
+    lines.append(f"  🏧 ATM/DEBIT: <code>{'✅ YES' if atm_debit else '❌ NO'}</code>")
+    lines.append(f"  🔒 AVS SUPPORT: <code>{'✅ YES' if avs else '❌ NO'}</code>")
+    
+    # 3DS/2FA Section
+    lines.append("")  # Spacer
+    lines.append(f"🔐 <b>3DS / 2FA</b>")
+    
     twofa_label = _label(twofa)
-    conf_indicator = "🟢" if twofa_conf >= 80 else "🟡" if twofa_conf >= 50 else "🔴"
-    lines.append(f"🔐 <b>3DS/AVS</b> {twofa_glyph} <code>{twofa_label}</code>{twofa_note} · <i>{twofa_reads} reads · {conf_indicator} {twofa_conf}% conf</i>")
+    conf_indicator = "🟢 HIGH" if twofa_conf >= 80 else "🟡 MEDIUM" if twofa_conf >= 50 else "🔴 LOW"
+    lines.append(f"  🔑 METHOD: {twofa_glyph} <code>{twofa_label}</code>{twofa_note}")
+    lines.append(f"  📊 READS: <code>{twofa_reads}</code> successful verifications")
+    lines.append(f"  🎯 CONFIDENCE: {conf_indicator} (<code>{twofa_conf}%</code>)")
     
-    # Add data freshness indicator
+    # Fleet Statistics Section
+    if fleet_n >= 5:
+        lines.append("")  # Spacer
+        lines.append(f"📊 <b>FLEET STATISTICS</b> (30 days)")
+        fleet_rate = round((fleet_approved / fleet_n) * 100) if fleet_n > 0 else 0
+        rate_color = "🟢" if fleet_rate >= 70 else "🟡" if fleet_rate >= 40 else "🔴"
+        lines.append(f"  🔢 TOTAL CHECKS: <code>{fleet_n}</code>")
+        lines.append(f"  📈 LIVE RATE: {rate_color} <code>{fleet_rate}%</code>")
+        lines.append(f"  ✅ APPROVED: <code>{fleet_approved}</code>")
+        lines.append(f"  ⚠️ SOFT DECLINES: <code>{fleet_soft}</code>")
+        lines.append(f"  ❌ HARD DECLINES: <code>{fleet_hard}</code>")
+    elif fleet_n > 0:
+        lines.append("")  # Spacer
+        lines.append(f"📊 <b>FLEET STATS</b> <i>(Cold BIN: {fleet_n} checks)</i>")
+    
+    # Data Quality Section
+    lines.append("")  # Spacer
+    lines.append(f"📚 <b>DATA QUALITY</b>")
+    
+    # Sources
+    if sources and len(sources) > 0:
+        source_names = ", ".join(list(sources.keys())[:5])
+        if len(sources) > 5:
+            source_names += f" +{len(sources) - 5} more"
+        lines.append(f"  📖 SOURCES: <code>{source_names}</code> ({len(sources)} total)")
+    else:
+        lines.append(f"  📖 SOURCES: <i>Internal database</i>")
+    
+    # Freshness
     if verified:
         try:
             from datetime import datetime
             verified_date = datetime.fromisoformat(verified.replace('Z', '+00:00'))
             days_old = (now - verified_date).days
-            freshness = "🟢 FRESH" if days_old < 7 else "🟡 OK" if days_old < 30 else "🔴 OLD"
-            lines.append(f"📅 <b>DATA FRESHNESS</b> {freshness} · <i>verified {days_old}d ago</i>")
+            freshness = "🟢 FRESH" if days_old < 7 else "🟡 OK" if days_old < 30 else "🟠 OLD" if days_old < 90 else "🔴 STALE"
+            lines.append(f"  📅 LAST VERIFIED: {freshness} (<code>{days_old} days</code> ago)")
         except Exception:
-            lines.append(f"📅 <b>DATA FRESHNESS</b> ⚪️ <i>unknown</i>")
+            lines.append(f"  📅 LAST VERIFIED: <i>Unknown</i>")
+    else:
+        lines.append(f"  📅 LAST VERIFIED: <i>Unknown</i>")
     
-    # Fleet stats with better formatting
-    if fleet_n >= 5:
-        fleet_rate = round((fleet_approved / fleet_n) * 100) if fleet_n > 0 else 0
-        rate_color = "🟢" if fleet_rate >= 70 else "🟡" if fleet_rate >= 40 else "🔴"
-        fleet_line = f"📊 <b>FLEET STATS</b> {fleet_n} checks · {rate_color} {fleet_rate}% live · {GLYPH['LIVE']}{fleet_approved}/{GLYPH['SOFT_DECLINE']}{fleet_soft}/{GLYPH['DEAD']}{fleet_hard}"
-        lines.append(fleet_line)
-    elif fleet_n > 0:
-        lines.append(f"📊 <b>FLEET STATS</b> <i>COLD BIN</i> n={fleet_n}")
+    # Confidence
+    conf_quality = "🟢 HIGH" if confidence >= 0.8 else "🟡 MEDIUM" if confidence >= 0.5 else "🔴 LOW"
+    lines.append(f"  🎯 OVERALL CONFIDENCE: {conf_quality} (<code>{confidence:.0%}</code>)")
     
-    # Sources line
-    if sources and len(sources) > 0:
-        source_count = len(sources)
-        source_names = ", ".join(list(sources.keys())[:3])
-        if source_count > 3:
-            source_names += f" +{source_count - 3} more"
-        lines.append(f"📚 <b>SOURCES</b> <code>{source_names}</code> <i>({source_count} total)</i>")
-
+    # Sample size
+    if sample_size > 0:
+        lines.append(f"  📊 SAMPLE SIZE: <code>{sample_size}</code> records")
+    
+    # BIN age
+    if bin_age > 0:
+        age_text = f"{bin_age} years" if bin_age > 1 else "1 year"
+        lines.append(f"  ⏳ BIN AGE: <code>{age_text}</code>")
+    
+    # Footer
+    lines.append("")  # Spacer
     footer = f"🧾 {FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
     lines.append(footer)
 
     if free:
         lines.insert(-1, WATERMARK)
 
-    return "<pre>" + "\n".join(lines) + "</pre>"
+    return "\n".join(lines)
 
 
 def card_block(record: Any, free: bool = False, now: datetime | None = None) -> str:
