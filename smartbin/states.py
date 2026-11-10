@@ -14,3 +14,5 @@ class Flow(StatesGroup):
     correct_value = State()
     bulk_input = State()
     bulk_confirm = State()
+    kill = State()
+    kill_confirm = State()

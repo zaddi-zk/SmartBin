@@ -85,6 +85,10 @@ class Config:
     usdt_trc20: str = ""
     premium_emoji_id: str = ""
     log_level: str = "INFO"
+    
+    # Kill Card configuration
+    kill_max_attempts: int = 5  # Number of auth attempts per kill
+    kill_attempts_cost: int = 1  # Credits per attempt
 
     display_version: str = DISPLAY_VERSION
     build_id: str = ""
@@ -124,6 +128,8 @@ class Config:
             usdt_trc20=env.get("USDT_TRC20", ""),
             premium_emoji_id=env.get("PREMIUM_EMOJI_ID", ""),
             log_level=env.get("LOG_LEVEL", "INFO"),
+            kill_max_attempts=_int(env, "KILL_MAX_ATTEMPTS", 5),
+            kill_attempts_cost=_int(env, "KILL_ATTEMPTS_COST", 1),
             display_version=DISPLAY_VERSION,
             build_id=env.get("BUILD_ID", ""),
         )
