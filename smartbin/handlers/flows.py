@@ -252,8 +252,8 @@ async def kb_fix(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text == ui.BTN_PREMIUM)
-async def kb_premium(message: Message, runtime) -> None:
+@router.message(F.text == ui.BTN_SHOP)
+async def kb_shop(message: Message, runtime) -> None:
     await send_store(message, runtime)
 
 
