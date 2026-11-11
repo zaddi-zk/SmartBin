@@ -422,11 +422,11 @@ def create_app(runtime: Any) -> web.Application:
 
         fresh = await runtime.db.get_user(uid) or user
         return web.json_response({
-            "live": outcome.live,
-            "approved": outcome.live,
+            "live": bool(outcome.live),
+            "approved": bool(outcome.live),
             "verdict": outcome.verdict,
-            "message": outcome.message,
-            "latency_ms": outcome.latency_ms,
+            "message": getattr(outcome, "message", "") or getattr(outcome, "note", ""),
+            "latency_ms": int(outcome.latency_ms or 0),
             "credits": int(fresh["credits"] or 0),
             "card": card.masked(),
             "quota": quota_snapshot(fresh, runtime.config),

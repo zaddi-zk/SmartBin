@@ -14,6 +14,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 from db import DB
 from miniapp.server import create_app
+from models import CheckOutcome
 
 TOKEN = "123456789:TESTTOKEN_TESTTOKEN_TESTTOKEN_TEST"
 UID = 555001
@@ -74,8 +75,10 @@ class FakeRunner:
 
     async def run(self, user_id: int, raw: str, purpose: str = "check"):
         self.calls += 1
-        return SimpleNamespace(
-            live=True, verdict="APPROVED", message="ok", latency_ms=10
+        # Use the real outcome type: a wrong attribute here must fail the test,
+        # not burn a production quota unit and return HTTP 500.
+        return CheckOutcome(
+            verdict="APPROVED", live=1, action="approved", latency_ms=10, note="ok"
         )
 
 
@@ -182,6 +185,8 @@ class MiniAppQuotaTest(unittest.IsolatedAsyncioTestCase):
         for expected_left in (1, 0):
             status, body = await self._check()
             self.assertEqual(status, 200, body)
+            self.assertEqual(body["verdict"], "APPROVED")
+            self.assertIn("message", body)
             self.assertEqual(body["quota"]["free_checks_left"], expected_left)
 
         status, body = await self._check()
