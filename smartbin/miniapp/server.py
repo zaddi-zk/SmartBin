@@ -129,6 +129,24 @@ def _init_data(request: web.Request) -> str:
     return header or request.query.get("init_data", "")
 
 
+def _auth_pairs(request: web.Request, runtime: Any) -> dict[str, Any] | None:
+    """Verify Telegram initData and log *why* a request was rejected."""
+    raw = _init_data(request)
+    try:
+        pairs = verify_init_data(raw, runtime.config.bot_token)
+    except Exception as exc:
+        log.warning("event=miniapp_verify_failed error=%s", exc)
+        return None
+    if pairs is None:
+        log.warning(
+            "event=miniapp_unauthorized path=%s has_init_data=%s bot_token_set=%s",
+            request.path,
+            bool(raw),
+            bool(runtime.config.bot_token),
+        )
+    return pairs
+
+
 def _init_user(pairs: dict[str, Any]) -> dict[str, Any]:
     try:
         data = json.loads(pairs.get("user", "") or "{}")
@@ -256,11 +274,7 @@ def create_app(runtime: Any) -> web.Application:
         return web.Response(status=204)
 
     async def api_bin(request: web.Request) -> web.Response:
-        try:
-            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
-        except Exception as exc:
-            log.warning("event=miniapp_verify_failed error=%s", exc)
-            pairs = None
+        pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
         await _safe_touch(runtime, pairs)
@@ -287,11 +301,7 @@ def create_app(runtime: Any) -> web.Application:
         return web.json_response(payload)
 
     async def api_status(request: web.Request) -> web.Response:
-        try:
-            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
-        except Exception as exc:
-            log.warning("event=miniapp_verify_failed error=%s", exc)
-            pairs = None
+        pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
         await _safe_touch(runtime, pairs)
@@ -303,11 +313,7 @@ def create_app(runtime: Any) -> web.Application:
         return web.json_response(payload)
 
     async def api_reflink(request: web.Request) -> web.Response:
-        try:
-            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
-        except Exception as exc:
-            log.warning("event=miniapp_verify_failed error=%s", exc)
-            pairs = None
+        pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
         await _safe_touch(runtime, pairs)
@@ -318,11 +324,7 @@ def create_app(runtime: Any) -> web.Application:
 
     async def api_check(request: web.Request) -> web.Response:
         """Card check endpoint for Mini App."""
-        try:
-            pairs = verify_init_data(_init_data(request), runtime.config.bot_token)
-        except Exception as exc:
-            log.warning("event=miniapp_verify_failed error=%s", exc)
-            pairs = None
+        pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
         await _safe_touch(runtime, pairs)

@@ -425,12 +425,27 @@
             tg = {
                 expand: () => {},
                 ready: () => {},
+                initData: '',
                 initDataUnsafe: { user: null },
                 openTelegramLink: (url) => window.open(url, '_blank'),
                 mainButton: { text: '', color: '', textColor: '', show: () => {}, hide: () => {} }
             };
         }
         
+        // Telegram injects the signed payload into WebApp.initData inside its webview.
+        // The URL query parameter is only a fallback (e.g. manually opened links).
+        function getInitData() {
+            if (tg && tg.initData) return tg.initData;
+            return new URLSearchParams(window.location.search).get('init_data') || '';
+        }
+
+        function getInitHeaders(extra) {
+            const headers = Object.assign({}, extra || {});
+            const initData = getInitData();
+            if (initData) headers['X-Telegram-Init-Data'] = initData;
+            return headers;
+        }
+
         // API Base URL - detect properly
         const API_BASE = window.location.origin || 'https://smartbin-eurr.onrender.com';
         
@@ -459,13 +474,7 @@
         // Load user data
         async function loadUserData() {
             try {
-                const initParams = new URLSearchParams(window.location.search);
-                const init_data = initParams.get('init_data') || '';
-                
-                const headers = {};
-                if (init_data) {
-                    headers['X-Telegram-Init-Data'] = init_data;
-                }
+                const headers = getInitHeaders();
                 
                 const response = await fetch(`${API_BASE}/api/status`, {
                     method: 'GET',
@@ -543,17 +552,7 @@
             document.getElementById(tabId).classList.add('active');
         }
         
-        // Get init data for API calls
-        function getInitHeaders() {
-            const headers = {};
-            const initParams = new URLSearchParams(window.location.search);
-            const init_data = initParams.get('init_data') || '';
-            if (init_data) {
-                headers['X-Telegram-Init-Data'] = init_data;
-            }
-            return headers;
-        }
-        
+        // Get init data for API calls (defined above; kept here as a marker)
         // BIN Lookup
         async function lookupBIN() {
             const bin = document.getElementById('binInput').value.trim();
