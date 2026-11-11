@@ -181,7 +181,7 @@ async def inline_bin(query: InlineQuery, runtime) -> None:
                 title=f"BIN {arg}",
                 description=f"{record.brand} {record.level} {record.bank}",
                 input_message_content=InputTextMessageContent(
-                    message_text=card_block(record, free=True), parse_mode="HTML"
+                    message_text=card_block(record, free=True)
                 ),
             )
         ],

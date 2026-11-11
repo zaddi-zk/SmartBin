@@ -147,8 +147,10 @@ class GuidedFlowTest(unittest.TestCase):
             await feed(update(message=_message(uid, "45717360")))
             text = session.last_text()
             self.assertIn("45717360", text)
-            self.assertIn("SMARTBIN BIN INTELLIGENCE", text)
-            self.assertIn("2FA", text)
+            self.assertIn("🧬 SMARTBIN · 45717360", text)
+            self.assertIn("BANK", text)
+            self.assertIn("Jyske Bank", text)
+            self.assertIn("3DS", text)
             callbacks = [
                 b.callback_data
                 for row in session.last().reply_markup.inline_keyboard

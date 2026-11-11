@@ -109,7 +109,7 @@ def dashboard_kb(admin: bool, miniapp_url: str = "") -> InlineKeyboardMarkup:
 def menu_text(config: Any, user: Any = None) -> str:
     header = premium_emoji("SMARTBIN", config.premium_emoji_id)
     lines = [
-        f"<b>{header}</b>  <code>v{config.display_version}</code>",
+        f"<b>🧬 {header}</b>  <code>v{config.display_version}</code>",
         "<blockquote>⚡ Card Intelligence · 💀 Kill Engine · 🎯 Live Verdicts</blockquote>",
         "",
         "🃏  <b>BIN Lookup</b> — metadata, sources, 2FA",
