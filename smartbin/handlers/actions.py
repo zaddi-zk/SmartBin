@@ -10,6 +10,7 @@ from handlers.common import (
     is_admin,
     mark_first,
     refund_usage,
+    should_refund,
 )
 from models import Card, utc_date
 from render import card_block, verdict_block, verdict_header, shop_buyer_block
@@ -141,8 +142,8 @@ async def run_check_and_render(
         )
         return
 
-    if outcome.verdict == "3DS-CHALLENGE":
-        # Integer storage cannot express half a check: a challenge read refunds it.
+    if should_refund(outcome):
+        # 3DS challenge or no gate/proxy: the check never produced a verdict.
         await refund_usage(runtime.db, user.id, "check", decision["consume"])
     await mark_first(runtime.db, "first_check")
     gate_label, health = await gate_view(runtime, outcome.gate)

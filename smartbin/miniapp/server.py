@@ -21,6 +21,7 @@ from quota import (
     is_premium,
     quota_snapshot,
     refund_usage,
+    should_refund,
 )
 
 log = logging.getLogger("smartbin.miniapp")
@@ -416,8 +417,8 @@ def create_app(runtime: Any) -> web.Application:
             log.warning("event=miniapp_check_failed card=%s error=%s", card.masked(), exc)
             return web.json_response({"error": "check failed"}, status=503)
 
-        if outcome.verdict == "3DS-CHALLENGE":
-            # A challenge read is not a completed check.
+        if should_refund(outcome):
+            # Challenge or no gate/proxy: the check never produced a verdict.
             await refund_usage(runtime.db, uid, "check", decision["consume"])
 
         fresh = await runtime.db.get_user(uid) or user

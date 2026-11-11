@@ -164,6 +164,22 @@ async def refund_usage(db: Any, uid: int, kind: str, consume: str) -> None:
         await db.refund_credit(uid)
 
 
+# Actions that mean the check never reached a gate. The user must not pay for
+# a verdict the platform failed to attempt.
+NO_DISPATCH_ACTIONS = frozenset(
+    {"parse-fail", "core-degraded", "canary-window-failed", "no-proxy"}
+)
+
+
+def should_refund(outcome: Any) -> bool:
+    """True when a claimed check should be returned to the user."""
+    if outcome is None:
+        return True
+    if getattr(outcome, "verdict", "") == "3DS-CHALLENGE":
+        return True
+    return getattr(outcome, "action", "") in NO_DISPATCH_ACTIONS
+
+
 def quota_snapshot(user: Any, config: Any) -> dict[str, Any]:
     """Everything the UI needs to show the remaining allowance."""
     bins_limit = daily_limit("bin", config)

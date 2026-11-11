@@ -70,11 +70,14 @@ class FakeStore:
 
 
 class FakeRunner:
-    def __init__(self):
+    def __init__(self, outcome=None):
         self.calls = 0
+        self.outcome = outcome
 
     async def run(self, user_id: int, raw: str, purpose: str = "check"):
         self.calls += 1
+        if self.outcome is not None:
+            return self.outcome
         # Use the real outcome type: a wrong attribute here must fail the test,
         # not burn a production quota unit and return HTTP 500.
         return CheckOutcome(
@@ -206,6 +209,19 @@ class MiniAppQuotaTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(body["quota"]["credits"], 0)
 
         self.assertEqual((await self._check())[0], 402)
+
+    async def test_undispatched_check_is_not_charged(self):
+        self.runtime.runner = FakeRunner(
+            CheckOutcome(
+                verdict="INCONCLUSIVE", action="core-degraded", note="no healthy gate"
+            )
+        )
+        for _ in range(4):
+            status, body = await self._check()
+            self.assertEqual(status, 200, body)
+            self.assertEqual(body["quota"]["free_checks_left"], 2)
+            self.assertEqual(body["quota"]["free_checks_used"], 0)
+        self.assertEqual(self.runtime.runner.calls, 4)
 
 
 if __name__ == "__main__":

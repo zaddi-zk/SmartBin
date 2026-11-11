@@ -19,6 +19,7 @@ from handlers.common import (
     is_unlimited,
     refund_usage,
     remaining,
+    should_refund,
 )
 from models import Card
 from render import WATERMARK
@@ -133,6 +134,8 @@ async def run_lines(
             await refund_usage(runtime.db, user.id, "check", decision["consume"])
             failed += 1
             continue
+        if should_refund(outcome):
+            await refund_usage(runtime.db, user.id, "check", decision["consume"])
         results.append((line, outcome))
 
     if not results:
