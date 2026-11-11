@@ -11,7 +11,25 @@ _ENV_KEYS = (
     "STRIPE_TEST_MODE CANARY_NONVBV CANARY_VBV CANARY_DEAD "
     "FREE_BINS_PER_DAY FREE_CHECKS_PER_DAY STARS_DAY STARS_MONTH "
     "STARS_CREDITS_500 CORRECTION_REWARD LRU_SIZE BIN_CACHE_DAYS "
-    "BULK_FREE_LINES BULK_PREMIUM_LINES USDT_TRC20 PREMIUM_EMOJI_ID LOG_LEVEL"
+    "BULK_FREE_LINES BULK_PREMIUM_LINES USDT_TRC20 PREMIUM_EMOJI_ID LOG_LEVEL "
+    # AuthNet
+    "AUTHNET_API_LOGIN_ID AUTHNET_TRANSACTION_KEY "
+    # Adyen
+    "ADYEN_API_KEY ADYEN_MERCHANT_ACCOUNT "
+    # Cybersource
+    "CYBERSOURCE_MERCHANT_ID CYBERSOURCE_API_KEY CYBERSOURCE_API_SECRET "
+    # Checkout.com
+    "CHECKOUT_API_KEY "
+    # Worldpay
+    "WORLDPAY_MERCHANT_CODE WORLDPAY_API_KEY "
+    # Shopify
+    "SHOPIFY_API_KEY "
+    # PayPal
+    "PAYPAL_CLIENT_ID PAYPAL_CLIENT_SECRET "
+    # Braintree
+    "BRAINTREE_MERCHANT_ID BRAINTREE_PUBLIC_KEY BRAINTREE_PRIVATE_KEY "
+    # Square
+    "SQUARE_ACCESS_TOKEN"
 ).split()
 
 
@@ -67,6 +85,41 @@ class Config:
 
     stripe_api_key: str = ""
     stripe_test_mode: bool = True
+
+    # AuthNet
+    authnet_api_login_id: str = ""
+    authnet_transaction_key: str = ""
+    
+    # Adyen
+    adyen_api_key: str = ""
+    adyen_merchant_account: str = ""
+    
+    # Cybersource
+    cybersource_merchant_id: str = ""
+    cybersource_api_key: str = ""
+    cybersource_api_secret: str = ""
+    
+    # Checkout.com
+    checkout_api_key: str = ""
+    
+    # Worldpay
+    worldpay_merchant_code: str = ""
+    worldpay_api_key: str = ""
+    
+    # Shopify
+    shopify_api_key: str = ""
+    
+    # PayPal
+    paypal_client_id: str = ""
+    paypal_client_secret: str = ""
+    
+    # Braintree
+    braintree_merchant_id: str = ""
+    braintree_public_key: str = ""
+    braintree_private_key: str = ""
+    
+    # Square
+    square_access_token: str = ""
 
     canary_nonvbv: str = "4242424242424242|12|2030|123"
     canary_vbv: str = "4000000000003220|12|2030|123"
@@ -132,6 +185,32 @@ class Config:
             kill_attempts_cost=_int(env, "KILL_ATTEMPTS_COST", 1),
             display_version=DISPLAY_VERSION,
             build_id=env.get("BUILD_ID", ""),
+            # AuthNet
+            authnet_api_login_id=env.get("AUTHNET_API_LOGIN_ID", ""),
+            authnet_transaction_key=env.get("AUTHNET_TRANSACTION_KEY", ""),
+            # Adyen
+            adyen_api_key=env.get("ADYEN_API_KEY", ""),
+            adyen_merchant_account=env.get("ADYEN_MERCHANT_ACCOUNT", ""),
+            # Cybersource
+            cybersource_merchant_id=env.get("CYBERSOURCE_MERCHANT_ID", ""),
+            cybersource_api_key=env.get("CYBERSOURCE_API_KEY", ""),
+            cybersource_api_secret=env.get("CYBERSOURCE_API_SECRET", ""),
+            # Checkout.com
+            checkout_api_key=env.get("CHECKOUT_API_KEY", ""),
+            # Worldpay
+            worldpay_merchant_code=env.get("WORLDPAY_MERCHANT_CODE", ""),
+            worldpay_api_key=env.get("WORLDPAY_API_KEY", ""),
+            # Shopify
+            shopify_api_key=env.get("SHOPIFY_API_KEY", ""),
+            # PayPal
+            paypal_client_id=env.get("PAYPAL_CLIENT_ID", ""),
+            paypal_client_secret=env.get("PAYPAL_CLIENT_SECRET", ""),
+            # Braintree
+            braintree_merchant_id=env.get("BRAINTREE_MERCHANT_ID", ""),
+            braintree_public_key=env.get("BRAINTREE_PUBLIC_KEY", ""),
+            braintree_private_key=env.get("BRAINTREE_PRIVATE_KEY", ""),
+            # Square
+            square_access_token=env.get("SQUARE_ACCESS_TOKEN", ""),
         )
 
     @property
