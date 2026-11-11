@@ -52,9 +52,9 @@ async def kill_input(message: Message, state: FSMContext, runtime) -> None:
     attempts_cost = runtime.config.kill_attempts_cost
     total_cost = attempts_cost * runtime.config.kill_max_attempts
     
-    if int(db_user["credits"]) < attempts_cost:
+    if int(db_user["credits"]) < total_cost:
         await message.answer(
-            ui.kill_insufficient_credits(attempts_cost),
+            ui.kill_insufficient_credits(total_cost),
             parse_mode="HTML",
             reply_markup=ui.paywall_kb(),
         )
@@ -80,41 +80,67 @@ async def run_kill(callback: Message, state: FSMContext, runtime) -> None:
     data = await state.get_data()
     raw = data.get("kill_raw")
     card = data.get("kill_card")
-    max_attempts = data.get("kill_attempts", 5)
-    cost_per_attempt = data.get("kill_cost_per_attempt", 1)
-    
+    max_attempts = int(data.get("kill_attempts", 5) or 0)
+    cost_per_attempt = int(data.get("kill_cost_per_attempt", 1) or 0)
+    total_cost = cost_per_attempt * max_attempts
+
     await callback.answer()
+
+    if not raw or max_attempts <= 0:
+        await callback.message.answer("No card to kill", reply_markup=ui.menu_only_kb())
+        await state.clear()
+        return
     
+    # Charge the whole run up front: kill is credit-only, never free-quota.
+    if not await runtime.db.user_spend(callback.from_user.id, total_cost):
+        await callback.message.answer(
+            ui.kill_insufficient_credits(total_cost),
+            parse_mode="HTML",
+            reply_markup=ui.paywall_kb(),
+        )
+        await state.clear()
+        return
+
     # Start kill operation
     results = []
     declined = 0
     approved = 0
     total_latency = 0
     
-    for attempt in range(max_attempts):
-        outcome = await runtime.runner.run(callback.from_user.id, raw, purpose="kill")
-        latency = outcome.latency_ms or 0
-        total_latency += latency
-        
-        if outcome.live:
-            approved += 1
-        else:
-            declined += 1
-        
-        results.append({
-            "attempt": attempt + 1,
-            "verdict": outcome.verdict,
-            "live": outcome.live,
-            "latency_ms": latency,
-        })
-        
-        # Small delay between attempts to avoid rate limiting
-        if attempt < max_attempts - 1:
-            await asyncio.sleep(0.5)
-    
-    # Deduct credits
-    total_cost = cost_per_attempt * len(results)
-    await runtime.db.user_spend(callback.from_user.id, total_cost)
+    try:
+        for attempt in range(max_attempts):
+            outcome = await runtime.runner.run(callback.from_user.id, raw, purpose="kill")
+            latency = outcome.latency_ms or 0
+            total_latency += latency
+            
+            if outcome.live:
+                approved += 1
+            else:
+                declined += 1
+            
+            results.append({
+                "attempt": attempt + 1,
+                "verdict": outcome.verdict,
+                "live": outcome.live,
+                "latency_ms": latency,
+            })
+            
+            # Small delay between attempts to avoid rate limiting
+            if attempt < max_attempts - 1:
+                await asyncio.sleep(0.5)
+    except Exception as exc:
+        # Refund the attempts that never ran.
+        unused = cost_per_attempt * max(0, max_attempts - len(results))
+        if unused:
+            await runtime.db.user_grant(callback.from_user.id, unused)
+        log.warning("event=kill_aborted user=%s attempts=%s error=%s",
+                    callback.from_user.id, len(results), exc)
+        await callback.message.answer(
+            "⚠️ Kill run aborted. Unused attempts were refunded.",
+            reply_markup=ui.menu_only_kb(),
+        )
+        await state.clear()
+        return
     
     # Calculate average latency
     avg_latency = total_latency / len(results) if results else 0

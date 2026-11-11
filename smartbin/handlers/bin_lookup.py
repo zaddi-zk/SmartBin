@@ -13,7 +13,7 @@ from aiogram.types import (
 
 import ui
 from handlers.actions import perform_bin_lookup, send_cached_bin
-from handlers.common import parse_bin_arg
+from handlers.common import claim_usage, parse_bin_arg
 from models import Card
 from render import card_block
 from states import Flow
@@ -57,10 +57,22 @@ async def search_cmd(message: Message, command: CommandObject, runtime) -> None:
             "Usage: /search <bank|brand|country>", reply_markup=ui.menu_only_kb()
         )
         return
+    user = message.from_user
+    await runtime.db.ensure_user(
+        user.id, username=user.username or "", first_name=user.first_name or ""
+    )
+    db_user = await runtime.db.reset_quota_if_needed(user.id)
     rows = await runtime.db.search_bins(query)
     if not rows:
         await message.answer(
             "No matches in the permanent cache.", reply_markup=ui.menu_only_kb()
+        )
+        return
+    # A result list exposes BIN metadata, so it costs one BIN lookup.
+    decision = await claim_usage(runtime.db, db_user, "bin", runtime.config)
+    if not decision["allowed"]:
+        await message.answer(
+            ui.paywall_text(), parse_mode="HTML", reply_markup=ui.paywall_kb()
         )
         return
     lines = [
@@ -91,10 +103,77 @@ async def inline_bin(query: InlineQuery, runtime) -> None:
                 )
             ],
             cache_time=5,
-            is_personal=False,
+            is_personal=True,
         )
         return
-    record = await runtime.store.get(arg) if len(arg) == 8 else await runtime.store.get_prefix(arg)
+
+    if len(arg) == 6:
+        # Do not charge on the 6th digit: the user is still typing.
+        await query.answer(
+            [
+                InlineQueryResultArticle(
+                    id=f"need8-{arg}",
+                    title=f"BIN {arg} — add 2 digits",
+                    description="Type the full 8-digit BIN, then pick the result.",
+                    input_message_content=InputTextMessageContent(
+                        message_text="SMARTBIN: type the full 8-digit BIN."
+                    ),
+                )
+            ],
+            cache_time=5,
+            is_personal=True,
+        )
+        return
+
+    user = query.from_user
+    await runtime.db.ensure_user(
+        user.id, username=user.username or "", first_name=user.first_name or ""
+    )
+    db_user = await runtime.db.reset_quota_if_needed(user.id)
+    record = await runtime.store.get(arg)
+    if record is None:
+        await query.answer(
+            [
+                InlineQueryResultArticle(
+                    id=f"missing-{arg}",
+                    title=f"BIN {arg} not cached",
+                    description="Open @SmartBlN_Bot and send the BIN to fetch it.",
+                    input_message_content=InputTextMessageContent(
+                        message_text=f"BIN {arg}: not in cache yet."
+                    ),
+                )
+            ],
+            cache_time=5,
+            is_personal=True,
+        )
+        return
+
+    # Inline mode re-sends the same query while the user scrolls; charge at
+    # most once per BIN per user per day.
+    first_today = await runtime.db.mark_daily_usage(user.id, "bin", arg)
+    if first_today:
+        decision = await claim_usage(runtime.db, db_user, "bin", runtime.config)
+        if not decision["allowed"]:
+            await runtime.db.unmark_daily_usage(user.id, "bin", arg)
+            await query.answer(
+                [
+                    InlineQueryResultArticle(
+                        id="paywall",
+                        title="Daily free limit reached",
+                        description="Open the bot to buy credits or premium.",
+                        input_message_content=InputTextMessageContent(
+                            message_text=(
+                                "SMARTBIN daily free limit reached. "
+                                "Open @SmartBlN_Bot to buy credits or premium."
+                            )
+                        ),
+                    )
+                ],
+                cache_time=5,
+                is_personal=True,
+            )
+            return
+
     await query.answer(
         [
             InlineQueryResultArticle(
@@ -107,7 +186,7 @@ async def inline_bin(query: InlineQuery, runtime) -> None:
             )
         ],
         cache_time=30,
-        is_personal=False,
+        is_personal=True,
     )
 
 

@@ -11,6 +11,7 @@ from aiogram.client.session.base import BaseSession
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import CallbackQuery, Chat, Message, Update, User
 
+import ui
 from config import Config
 from handlers import setup_routers
 from render import verdict_block, verdict_header
@@ -146,7 +147,7 @@ class GuidedFlowTest(unittest.TestCase):
             await feed(update(message=_message(uid, "45717360")))
             text = session.last_text()
             self.assertIn("45717360", text)
-            self.assertIn("SMARTBIN BIN TELEMETRY", text)
+            self.assertIn("SMARTBIN BIN INTELLIGENCE", text)
             self.assertIn("2FA", text)
             callbacks = [
                 b.callback_data
@@ -172,12 +173,12 @@ class GuidedFlowTest(unittest.TestCase):
             self.assertIn("flow:runcheck", confirm)
             await feed(update(callback_query=_callback(uid, "flow:runcheck")))
             verdict = session.last_text()
-            self.assertIn("VERDICT", verdict)
+            self.assertIn("CORROBORATED", verdict)
             self.assertIn("APPROVED", verdict)
-            self.assertIn("🟢", verdict)
-            self.assertIn("gate-1", verdict)
-            self.assertNotIn("stripe", verdict.lower())
-            self.assertIn("auto-route", verdict)
+            self.assertIn("🟩", verdict)
+            self.assertIn("GATE-1", verdict)
+            self.assertNotIn("gate=stripe", verdict.lower())
+            self.assertIn("SMARTBIN", verdict)
             self.assertNotIn("-- @SmartBlN_Bot", verdict)  # admin is unlimited: no watermark
 
             # Status
@@ -186,8 +187,8 @@ class GuidedFlowTest(unittest.TestCase):
             self.assertIn("ROUTING", session.last_text())
 
             # Fix record -> BIN -> field -> value
-            await feed(update(message=_message(uid, "🐞 Fix Record")))
-            self.assertIn("Fix a Record", session.last_text())
+            await feed(update(message=_message(uid, ui.BTN_FIX)))
+            self.assertIn("BIN Doctor", session.last_text())
             await feed(update(message=_message(uid, "45717360")))
             fields = [
                 b.callback_data
@@ -199,7 +200,7 @@ class GuidedFlowTest(unittest.TestCase):
             await feed(update(callback_query=_callback(uid, "flow:corrfield:bank")))
             self.assertIn("Bank", session.last_text())
             await feed(update(message=_message(uid, "Jyske Bank")))
-            self.assertIn("Correction queued", session.last_text())
+            self.assertIn("Correction Queued", session.last_text())
             self.assertGreaterEqual(await runtime.db.count("corrections"), 1)
 
             # Idle card text -> confirmation, cancel, unknown fallback
@@ -229,7 +230,7 @@ class GuidedFlowTest(unittest.TestCase):
             self.assertGreater(after, before)
             header = verdict_header(outcome, {}, "gate-1")
             self.assertIn("CORE DEGRADED", header)
-            self.assertIn("no proxy", header)
+            self.assertIn("proxy pool empty", header)
             body = verdict_block(outcome, None, free=True, gate_label="gate-1")
             self.assertIn("INCONCLUSIVE-NO-PROXY", body)
             self.assertNotIn("stripe", body.lower())

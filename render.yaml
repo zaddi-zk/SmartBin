@@ -30,9 +30,9 @@ services:
       - key: STRIPE_TEST_MODE
         value: "0"  # LIVE MODE for real checks
       - key: FREE_BINS_PER_DAY
-        value: "10"
+        value: "3"
       - key: FREE_CHECKS_PER_DAY
-        value: "5"  # increased for peak usage
+        value: "2"
       - key: LOG_LEVEL
         value: WARNING  # less logging = faster
       - key: PYTHONPATH

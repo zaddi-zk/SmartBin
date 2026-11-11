@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS users (
   quota_date   TEXT DEFAULT '',             -- UTC date for daily free quota reset
   free_bin     INTEGER DEFAULT 0,
   free_check   INTEGER DEFAULT 0,
+  bonus_check  INTEGER DEFAULT 0,           -- referral/promo checks, spend before credits
   stars_total  INTEGER DEFAULT 0,
   corrections  INTEGER DEFAULT 0,
   is_banned    INTEGER DEFAULT 0
@@ -134,6 +135,24 @@ CREATE TABLE IF NOT EXISTS stats (
   key   TEXT PRIMARY KEY,
   value INTEGER DEFAULT 0
 );
+
+-- Per-user, per-day, per-item dedupe. Inline mode re-sends the same query
+-- while the user types; one BIN must never be charged twice in a day.
+CREATE TABLE IF NOT EXISTS usage (
+  user_id INTEGER NOT NULL,
+  day     TEXT NOT NULL,
+  kind    TEXT NOT NULL,
+  key     TEXT NOT NULL,
+  PRIMARY KEY (user_id, day, kind, key)
+);
+
+-- One referral reward per referee, ever. Replaying /start ref_<id> must not
+-- mint unlimited bonus checks.
+CREATE TABLE IF NOT EXISTS referrals (
+  referee_id  INTEGER PRIMARY KEY,
+  referrer_id INTEGER NOT NULL,
+  created_utc TEXT DEFAULT ''
+);
 """
 
 # Postgres / Supabase schema. Same columns as the SQLite schema, in order,
@@ -182,6 +201,7 @@ PG_SCHEMA = [
       quota_date    TEXT DEFAULT '',
       free_bin      INTEGER DEFAULT 0,
       free_check    INTEGER DEFAULT 0,
+      bonus_check   INTEGER DEFAULT 0,
       stars_total   INTEGER DEFAULT 0,
       corrections   INTEGER DEFAULT 0,
       is_banned     INTEGER DEFAULT 0
@@ -253,6 +273,18 @@ PG_SCHEMA = [
       key   TEXT PRIMARY KEY,
       value INTEGER DEFAULT 0
     )""",
+    """CREATE TABLE IF NOT EXISTS usage (
+      user_id BIGINT NOT NULL,
+      day     TEXT NOT NULL,
+      kind    TEXT NOT NULL,
+      key     TEXT NOT NULL,
+      PRIMARY KEY (user_id, day, kind, key)
+    )""",
+    """CREATE TABLE IF NOT EXISTS referrals (
+      referee_id  BIGINT PRIMARY KEY,
+      referrer_id BIGINT NOT NULL,
+      created_utc TEXT DEFAULT ''
+    )""",
 ]
 
 import json
@@ -276,6 +308,16 @@ def _jsonify(data: dict[str, Any]) -> dict[str, Any]:
 
 def today_utc() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def _rowcount(result: Any) -> int:
+    """UPDATE/DELETE affected-row count across SQLite cursor and psycopg int."""
+    if isinstance(result, int):
+        return result
+    try:
+        return int(result.rowcount)  # type: ignore[union-attr]
+    except (AttributeError, TypeError, ValueError):
+        return 0
 
 
 def _pg_sql(sql: str) -> str:
@@ -334,6 +376,9 @@ class DB:
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_utc TEXT DEFAULT ''"
             )
             await self.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS bonus_check INTEGER DEFAULT 0"
+            )
+            await self.execute(
                 "UPDATE users SET last_seen_utc=joined_utc "
                 "WHERE COALESCE(last_seen_utc,'')='' AND COALESCE(joined_utc,'')<>''"
             )
@@ -359,6 +404,10 @@ class DB:
             await self._conn.execute(
                 "ALTER TABLE users ADD COLUMN last_seen_utc TEXT DEFAULT ''"
             )
+        if "bonus_check" not in cols:
+            await self._conn.execute(
+                "ALTER TABLE users ADD COLUMN bonus_check INTEGER DEFAULT 0"
+            )
         await self._conn.execute(
             "UPDATE users SET last_seen_utc=joined_utc "
             "WHERE COALESCE(last_seen_utc,'')='' AND COALESCE(joined_utc,'')<>''"
@@ -378,8 +427,9 @@ class DB:
         if self.is_postgres:
             async with self._pool.connection() as conn:
                 cur = await conn.execute(_pg_sql(sql), tuple(params))
+                count = cur.rowcount
                 await cur.close()
-            return None
+            return count
         cur = await self.conn.execute(sql, tuple(params))
         await self.conn.commit()
         return cur
@@ -556,36 +606,138 @@ class DB:
         )
 
     async def reset_quota_if_needed(self, user_id: int) -> Any:
+        """Roll the daily counters atomically when the UTC date changes."""
+        await self.reset_free_quota(user_id)
         row = await self.get_user(user_id)
         if row is None:
             return await self.ensure_user(user_id)
-        if row["quota_date"] != today_utc():
-            await self.execute(
-                "UPDATE users SET quota_date=?, free_bin=0, free_check=0 WHERE user_id=?",
-                (today_utc(), user_id),
-            )
-            row = await self.get_user(user_id)
-        assert row is not None
         return row
 
-    async def grant_referral_bonus(self, referee_id: int, referrer_id: int) -> None:
-        """Grant 5 free checks to both referrer and referee."""
-        # Grant to referee (new user)
+    async def reset_free_quota(self, user_id: int) -> None:
+        today = today_utc()
         await self.execute(
-            "UPDATE users SET free_check=free_check+5 WHERE user_id=?",
-            (referee_id,),
+            "UPDATE users SET quota_date=?, free_bin=0, free_check=0 "
+            "WHERE user_id=? AND COALESCE(quota_date,'')<>?",
+            (today, user_id, today),
         )
-        # Grant to referrer (existing user)
+
+    # ---------- quota claims (single conditional UPDATE = race-free) ----------
+    async def claim_free(self, user_id: int, kind: str, limit: int) -> bool:
+        """Take one free unit only if today's allowance still has room.
+
+        Bonus checks are a separate finite balance (`claim_bonus_check`) so a
+        one-off referral reward can never turn into a permanent higher limit.
+        """
+        if kind not in ("bin", "check"):
+            raise ValueError(f"unknown quota kind: {kind}")
+        limit = max(0, int(limit))
+        col = f"free_{kind}"
+        result = await self.execute(
+            f"UPDATE users SET {col}={col}+1 "
+            f"WHERE user_id=? AND quota_date=? AND {col} < ?",
+            (user_id, today_utc(), limit),
+        )
+        return _rowcount(result) == 1
+
+    async def claim_bonus_check(self, user_id: int) -> bool:
+        """Spend one referral/promo check from the finite bonus balance."""
+        result = await self.execute(
+            "UPDATE users SET bonus_check=bonus_check-1 "
+            "WHERE user_id=? AND bonus_check>0",
+            (user_id,),
+        )
+        return _rowcount(result) == 1
+
+    async def claim_credit(self, user_id: int) -> bool:
+        """Spend one credit only if the balance is still positive."""
+        result = await self.execute(
+            "UPDATE users SET credits=credits-1 WHERE user_id=? AND credits>0",
+            (user_id,),
+        )
+        return _rowcount(result) == 1
+
+    async def refund_free(self, user_id: int, kind: str) -> None:
+        if kind not in ("bin", "check"):
+            raise ValueError(f"unknown quota kind: {kind}")
+        col = f"free_{kind}"
         await self.execute(
-            "UPDATE users SET free_check=free_check+5 WHERE user_id=?",
-            (referrer_id,),
+            f"UPDATE users SET {col}=CASE WHEN {col}>0 THEN {col}-1 ELSE 0 END "
+            f"WHERE user_id=? AND quota_date=?",
+            (user_id, today_utc()),
         )
+
+    async def refund_credit(self, user_id: int) -> None:
+        await self.execute(
+            "UPDATE users SET credits=credits+1 WHERE user_id=?", (user_id,)
+        )
+
+    async def refund_bonus_check(self, user_id: int) -> None:
+        await self.execute(
+            "UPDATE users SET bonus_check=bonus_check+1 WHERE user_id=?", (user_id,)
+        )
+
+    async def mark_daily_usage(
+        self, user_id: int, kind: str, key: str, day: str | None = None
+    ) -> bool:
+        """Return True only the first time this item is seen for the user today."""
+        result = await self.execute(
+            "INSERT INTO usage(user_id, day, kind, key) VALUES (?,?,?,?) "
+            "ON CONFLICT DO NOTHING",
+            (user_id, day or today_utc(), kind, key),
+        )
+        return _rowcount(result) == 1
+
+    async def unmark_daily_usage(self, user_id: int, kind: str, key: str) -> None:
+        await self.execute(
+            "DELETE FROM usage WHERE user_id=? AND day=? AND kind=? AND key=?",
+            (user_id, today_utc(), kind, key),
+        )
+
+    async def grant_referral_bonus(self, referee_id: int, referrer_id: int) -> bool:
+        """Grant 5 bonus checks to both sides, once per referee.
+
+        Bonus checks live outside `free_check` so they survive the daily reset
+        and are never mistaken for "already used the free allowance". A replay
+        of `/start ref_<id>` is rejected by the `referrals` primary key.
+        """
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        inserted = await self.execute(
+            "INSERT INTO referrals(referee_id, referrer_id, created_utc) VALUES (?,?,?) "
+            "ON CONFLICT DO NOTHING",
+            (referee_id, referrer_id, now),
+        )
+        if _rowcount(inserted) != 1:
+            return False
+        for uid in {referee_id, referrer_id}:
+            await self.execute(
+                "UPDATE users SET bonus_check=bonus_check+5 WHERE user_id=?",
+                (uid,),
+            )
+        return True
 
     async def update_user(self, user_id: int, **fields: Any) -> None:
         if not fields:
             return
         sets = ",".join(f"{k}=?" for k in fields)
         await self.execute(f"UPDATE users SET {sets} WHERE user_id=?", (*fields.values(), user_id))
+
+    async def user_spend(self, user_id: int, amount: int = 1) -> bool:
+        """Atomically spend credits; never drives the balance negative."""
+        amount = max(0, int(amount))
+        if amount == 0:
+            return True
+        result = await self.execute(
+            "UPDATE users SET credits=credits-? WHERE user_id=? AND credits>=?",
+            (amount, user_id, amount),
+        )
+        return _rowcount(result) == 1
+
+    async def user_grant(self, user_id: int, amount: int = 1) -> None:
+        amount = max(0, int(amount))
+        if amount:
+            await self.execute(
+                "UPDATE users SET credits=credits+? WHERE user_id=?", (amount, user_id)
+            )
 
     # ---------- checks ----------
     async def add_check(self, row: Mapping[str, Any]) -> int:

@@ -86,6 +86,23 @@
         .user-row:last-child { margin-bottom: 0; }
         .user-label { color: var(--text-secondary); font-size: 13px; }
         .user-value { font-weight: 600; }
+        .quota-bar {
+            display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+        }
+        .quota-chip {
+            flex: 1 1 0; min-width: 96px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 8px 10px;
+            font-size: 12px; font-weight: 600;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 6px;
+        }
+        .quota-chip span.q { color: var(--gold-primary); }
+        .quota-chip.empty { border-color: var(--danger); }
+        .quota-chip.empty span.q { color: var(--danger); }
+        .quota-chip.unlimited { border-color: var(--gold-dark); }
         .nav-tabs {
             display: flex; gap: 8px;
             padding: 16px 20px;
@@ -249,6 +266,14 @@
                     <span class="user-value" id="planDisplay">Free</span>
                 </div>
             </div>
+            <div class="quota-bar" id="quotaBar">
+                <div class="quota-chip" id="binQuotaChip">
+                    <span>🃏 BIN</span><span class="q" id="binQuota">--</span>
+                </div>
+                <div class="quota-chip" id="checkQuotaChip">
+                    <span>⚡ Checks</span><span class="q" id="checkQuota">--</span>
+                </div>
+            </div>
         </header>
         <nav class="nav-tabs">
             <button class="nav-tab active" data-tab="home">🏠 Home</button>
@@ -327,12 +352,12 @@
             </section>
             <section class="section" id="kill">
                 <h2 style="margin-bottom:12px;">💀 Kill Card</h2>
-                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Execute 5 auth attempts to drain/verify card. Costs 5 credits.</p>
+                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Execute 5 auth attempts to drain/verify card. Uses 5 checks — free daily checks first, then credits.</p>
                 <div class="input-group">
                     <label class="input-label">Card Details</label>
                     <input type="text" class="input-field" id="killInput" placeholder="number|MM|YY|CVV">
                 </div>
-                <button class="btn btn-danger" onclick="killCard()">💀 Execute Kill (5 credits)</button>
+                <button class="btn btn-danger" onclick="killCard()">💀 Execute Kill (5 checks)</button>
                 <div id="killResult" style="margin-top:20px;"></div>
             </section>
             <section class="section" id="bulk">
@@ -448,7 +473,69 @@
 
         // API Base URL - detect properly
         const API_BASE = window.location.origin || 'https://smartbin-eurr.onrender.com';
-        
+
+        // Single source of truth for the daily allowance: the server sends this
+        // after every lookup/check so the UI can never drift out of sync.
+        let quota = null;
+
+        function quotaLabel(q, left) {
+            if (q.unlimited) return '♾️';
+            return `${left} left`;
+        }
+
+        function renderQuota(q) {
+            if (!q) return;
+            quota = q;
+            userData.credits = (q.credits !== undefined && q.credits !== null)
+                ? parseInt(q.credits, 10) || 0
+                : userData.credits;
+            document.getElementById('creditsDisplay').textContent =
+                userData.credits.toLocaleString();
+
+            const planEl = document.getElementById('planDisplay');
+            if (planEl) {
+                planEl.textContent = q.unlimited
+                    ? (q.admin ? '🛠 Admin' : '👑 Premium')
+                    : 'Free';
+            }
+
+            const binsLeft = q.free_bins_left === null || q.free_bins_left === undefined
+                ? 0 : parseInt(q.free_bins_left, 10);
+            const checksLeft = q.free_checks_left === null || q.free_checks_left === undefined
+                ? 0 : parseInt(q.free_checks_left, 10);
+
+            const binEl = document.getElementById('binQuota');
+            const checkEl = document.getElementById('checkQuota');
+            const binChip = document.getElementById('binQuotaChip');
+            const checkChip = document.getElementById('checkQuotaChip');
+            if (binEl) binEl.textContent = quotaLabel(q, binsLeft);
+            if (checkEl) checkEl.textContent = quotaLabel(q, checksLeft);
+            if (binChip) {
+                binChip.classList.toggle('empty', !q.unlimited && binsLeft <= 0);
+                binChip.classList.toggle('unlimited', !!q.unlimited);
+            }
+            if (checkChip) {
+                checkChip.classList.toggle('empty', !q.unlimited && checksLeft <= 0);
+                checkChip.classList.toggle('unlimited', !!q.unlimited);
+            }
+        }
+
+        function checksAvailable() {
+            if (!quota || quota.unlimited) return Infinity;
+            const left = (quota.free_checks_left === null || quota.free_checks_left === undefined)
+                ? 0 : parseInt(quota.free_checks_left, 10) || 0;
+            return left + (parseInt(quota.credits, 10) || 0);
+        }
+
+        function limitBlock(data, status) {
+            const msg = (data && data.error) ? data.error
+                : `Request refused (${status}).`;
+            const buy = (data && data.code === 'limit_reached')
+                ? `<button class="btn btn-primary" style="margin-top:12px;" onclick="switchTab('shop')">💎 Buy Credits / Premium</button>`
+                : '';
+            return `<div class="result-card"><p style="color:var(--danger)">🚫 ${msg}</p>${buy}</div>`;
+        }
+
         // User data
         let userData = {
             id: tg.initDataUnsafe?.user?.id || null,
@@ -481,13 +568,19 @@
                     headers: headers
                 });
                 
+                const data = await response.json().catch(() => ({}));
+
                 if (!response.ok) {
-                    console.warn('Status check failed:', response.status);
+                    console.warn('Status check failed:', response.status, data.error || '');
                     return;
                 }
-                
-                const data = await response.json();
-                
+
+                renderQuota(data.quota);
+                if (data.user) {
+                    userData.id = data.user.id ?? userData.id;
+                    userData.credits = data.user.credits ?? userData.credits;
+                }
+
                 // Update credits from Telegram user data if available
                 if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
                     userData.id = tg.initDataUnsafe.user.id;
@@ -569,10 +662,13 @@
                 const response = await fetch(`${API_BASE}/api/bin?bin=${encodeURIComponent(bin)}`, {
                     headers: headers
                 });
-                const data = await response.json();
-                
-                if (data.error) {
-                    resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">${data.error}</p></div>`;
+                const data = await response.json().catch(() => ({}));
+
+                if (data.quota) renderQuota(data.quota);
+
+                if (!response.ok || data.error) {
+                    resultDiv.innerHTML = limitBlock(data, response.status);
+                    if (data.code === 'limit_reached') showToast('🚫 Daily BIN limit reached');
                     return;
                 }
                 
@@ -692,15 +788,12 @@
                     body: JSON.stringify({ card: card, amount: parseFloat(amount) })
                 });
                 
-                if (!response.ok) {
-                    const errData = await response.json().catch(() => ({}));
-                    throw new Error(errData.error || 'Check failed');
-                }
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">${data.error}</p></div>`;
+                const data = await response.json().catch(() => ({}));
+                if (data.quota) renderQuota(data.quota);
+
+                if (!response.ok || data.error) {
+                    resultDiv.innerHTML = limitBlock(data, response.status);
+                    if (data.code === 'limit_reached') showToast('🚫 Daily check limit reached');
                     return;
                 }
                 
@@ -739,8 +832,12 @@
                 `;
                 
                 showToast(`${statusEmoji} ${statusText}`);
-                userData.credits = parseInt(data.credits) || userData.credits;
-                document.getElementById('creditsDisplay').textContent = userData.credits.toLocaleString();
+                if (data.quota) {
+                    renderQuota(data.quota);
+                } else if (data.credits !== undefined) {
+                    userData.credits = parseInt(data.credits, 10) || 0;
+                    document.getElementById('creditsDisplay').textContent = userData.credits.toLocaleString();
+                }
                 
             } catch (error) {
                 resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">❌ Error: ${error.message}</p></div>`;
@@ -756,8 +853,8 @@
                 return;
             }
             
-            if (userData.credits < 5) {
-                showToast('❌ Insufficient credits (need 5)');
+            if (checksAvailable() < 5) {
+                showToast('❌ Need 5 checks/credits for a kill run');
                 return;
             }
             
@@ -768,6 +865,7 @@
                 const results = [];
                 let approved = 0;
                 let totalLatency = 0;
+                let limitHit = false;
                 
                 for (let i = 0; i < 5; i++) {
                     const headers = {
@@ -780,13 +878,13 @@
                         headers: headers,
                         body: JSON.stringify({ card: card })
                     });
-                    
-                    if (!response.ok) {
-                        const errData = await response.json().catch(() => ({}));
-                        throw new Error(errData.error || 'Kill attempt failed');
+                    const data = await response.json().catch(() => ({}));
+                    if (data.quota) renderQuota(data.quota);
+
+                    if (!response.ok || data.error) {
+                        limitHit = data.code === 'limit_reached';
+                        break;
                     }
-                    
-                    const data = await response.json();
                     
                     const isLive = data.live || data.approved;
                     if (isLive) approved++;
@@ -802,7 +900,18 @@
                     await new Promise(resolve => setTimeout(resolve, 300));
                 }
                 
-                const avgLatency = Math.round(totalLatency / 5);
+                if (results.length === 0) {
+                    resultDiv.innerHTML = limitBlock({
+                        error: limitHit
+                            ? 'Daily free check limit reached. Buy credits to continue.'
+                            : 'Kill attempt failed',
+                        code: limitHit ? 'limit_reached' : ''
+                    }, 402);
+                    showToast(limitHit ? '🚫 Daily limit reached' : '❌ Kill failed');
+                    return;
+                }
+
+                const avgLatency = Math.round(totalLatency / Math.max(1, results.length));
                 const finalStatus = approved > 0 ? 'LIVE (PARTIAL)' : 'DECLINED';
                 const statusClass = approved > 0 ? 'status-live' : 'status-dead';
                 const statusEmoji = approved > 0 ? '🟢' : '🔴';
@@ -818,12 +927,13 @@
                     `;
                 });
                 
-                stats.totalChecks += 5;
+                stats.totalChecks += results.length;
                 stats.successfulChecks += approved;
                 updateStats();
-                
-                userData.credits -= 5;
-                document.getElementById('creditsDisplay').textContent = userData.credits.toLocaleString();
+
+                const stoppedNote = results.length < 5
+                    ? `<div class="result-row"><span class="result-label">⚠️ Stopped early</span><span class="result-value">${results.length}/5 — ${limitHit ? 'daily limit reached' : 'gate error'}</span></div>`
+                    : '';
                 
                 resultDiv.innerHTML = `
                     <div class="result-card">
@@ -837,7 +947,7 @@
                         </div>
                         <div class="result-row">
                             <span class="result-label">🔄 Attempts</span>
-                            <span class="result-value">5</span>
+                            <span class="result-value">${results.length}</span>
                         </div>
                         <div class="result-row">
                             <span class="result-label">✅ Approved</span>
@@ -845,12 +955,13 @@
                         </div>
                         <div class="result-row">
                             <span class="result-label">❌ Declined</span>
-                            <span class="result-value">${5 - approved}</span>
+                            <span class="result-value">${results.length - approved}</span>
                         </div>
                         <div class="result-row">
                             <span class="result-label">⚡ Avg Speed</span>
                             <span class="result-value">${avgLatency}ms</span>
                         </div>
+                        ${stoppedNote}
                         <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
                             ${attemptsHtml}
                         </div>
@@ -880,6 +991,8 @@
             try {
                 const results = [];
                 let approved = 0;
+                let limitHit = false;
+                let skipped = 0;
                 
                 for (const card of cards.slice(0, 20)) {
                     const headers = {
@@ -892,12 +1005,14 @@
                         headers: headers,
                         body: JSON.stringify({ card: card.trim() })
                     });
-                    
-                    if (!response.ok) {
-                        continue; // Skip failed checks
+                    const data = await response.json().catch(() => ({}));
+                    if (data.quota) renderQuota(data.quota);
+
+                    if (!response.ok || data.error) {
+                        limitHit = data.code === 'limit_reached';
+                        skipped = cards.length - results.length;
+                        break; // stop instead of hammering a closed quota
                     }
-                    
-                    const data = await response.json();
                     
                     const isLive = data.live || data.approved;
                     if (isLive) approved++;
@@ -921,6 +1036,21 @@
                 stats.totalChecks += results.length;
                 stats.successfulChecks += approved;
                 updateStats();
+
+                if (results.length === 0) {
+                    resultDiv.innerHTML = limitBlock({
+                        error: limitHit
+                            ? 'Daily free check limit reached. Buy credits to continue.'
+                            : 'No cards could be checked',
+                        code: limitHit ? 'limit_reached' : ''
+                    }, 402);
+                    showToast(limitHit ? '🚫 Daily limit reached' : '❌ Bulk failed');
+                    return;
+                }
+
+                const skippedNote = skipped > 0
+                    ? `<div class="result-row"><span class="result-label">⚠️ Skipped</span><span class="result-value">${skipped} — ${limitHit ? 'daily limit reached' : 'request failed'}</span></div>`
+                    : '';
                 
                 resultDiv.innerHTML = `
                     <div class="result-card">
@@ -929,6 +1059,7 @@
                             <span class="result-status status-live">${approved}/${results.length} LIVE</span>
                         </div>
                         ${resultsHtml}
+                        ${skippedNote}
                     </div>
                 `;
                 

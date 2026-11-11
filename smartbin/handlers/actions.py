@@ -1,17 +1,20 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import ui
 from handlers.common import (
-    consume_quota,
+    claim_usage,
     free_watermark,
     is_admin,
     mark_first,
-    quota_decision,
+    refund_usage,
 )
 from models import Card, utc_date
 from render import card_block, verdict_block, verdict_header, shop_buyer_block
+
+log = logging.getLogger("smartbin.actions")
 
 
 async def gate_view(runtime: Any, gate_name: str) -> tuple[str, dict]:
@@ -45,9 +48,8 @@ async def _paywall(message: Any) -> None:
 
 
 async def _bin_result(
-    message: Any, runtime: Any, arg: str, user: Any, db_user: Any
+    message: Any, runtime: Any, record: Any, arg: str, db_user: Any
 ) -> None:
-    record = await lookup(runtime, arg)
     await mark_first(runtime.db, "first_bin")
     await runtime.db.stats_bump(f"day:{utc_date()}:bins")
     await message.answer(
@@ -62,28 +64,47 @@ async def perform_bin_lookup(
 ) -> None:
     user = user or message.from_user
     db_user = await ensure_user(runtime, user)
-    decision = quota_decision(db_user, "bin", runtime.config)
+
+    # Resolve first: a miss must not cost one of the three daily lookups.
+    record = await lookup(runtime, arg)
+    if record is None:
+        await message.answer(
+            f"❌ No data cached for BIN <code>{arg}</code>",
+            parse_mode="HTML",
+            reply_markup=ui.bin_kb(arg),
+        )
+        return
+
+    decision = await claim_usage(runtime.db, db_user, "bin", runtime.config)
     if not decision["allowed"]:
         await _paywall(message)
         return
 
-    await consume_quota(runtime.db, user.id, "bin", decision["consume"])
-    await _bin_result(message, runtime, arg, user, db_user)
+    await _bin_result(message, runtime, record, arg, db_user)
 
 
 async def send_cached_bin(
     message: Any, runtime: Any, arg: str, user: Any = None
 ) -> None:
-    """Render a BIN reached from a result. Counts as a BIN lookup, never free."""
+    """Render a BIN reached from a result. Counts against the daily quota."""
     user = user or message.from_user
     db_user = await ensure_user(runtime, user)
-    decision = quota_decision(db_user, "bin", runtime.config)
+
+    record = await lookup(runtime, arg)
+    if record is None:
+        await message.answer(
+            f"❌ No data cached for BIN <code>{arg}</code>",
+            parse_mode="HTML",
+            reply_markup=ui.bin_kb(arg),
+        )
+        return
+
+    decision = await claim_usage(runtime.db, db_user, "bin", runtime.config)
     if not decision["allowed"]:
         await _paywall(message)
         return
 
-    await consume_quota(runtime.db, user.id, "bin", decision["consume"])
-    await _bin_result(message, runtime, arg, user, db_user)
+    await _bin_result(message, runtime, record, arg, db_user)
 
 
 async def run_check_and_render(
@@ -103,26 +124,26 @@ async def run_check_and_render(
 
     user = user or message.from_user
     db_user = await ensure_user(runtime, user)
-    decision = quota_decision(db_user, "check", runtime.config)
+    decision = await claim_usage(runtime.db, db_user, "check", runtime.config)
     if not decision["allowed"]:
         await _paywall(message)
         return
 
-    await consume_quota(runtime.db, user.id, "check", decision["consume"])
-    outcome = await runtime.runner.run(user.id, raw)
+    try:
+        outcome = await runtime.runner.run(user.id, raw)
+    except Exception as exc:
+        # Never charge for a check that never produced a verdict.
+        await refund_usage(runtime.db, user.id, "check", decision["consume"])
+        log.warning("event=check_failed user=%s error=%s", user.id, exc)
+        await message.answer(
+            "⚠️ Check failed before a verdict was returned. No quota was used.",
+            reply_markup=ui.menu_only_kb(),
+        )
+        return
+
     if outcome.verdict == "3DS-CHALLENGE":
         # Integer storage cannot express half a check: a challenge read refunds it.
-        if decision["consume"] == "free":
-            await runtime.db.execute(
-                "UPDATE users SET free_check=CASE WHEN free_check>0 THEN free_check-1 ELSE 0 END "
-                "WHERE user_id=?",
-                (user.id,),
-            )
-        elif decision["consume"] == "credit":
-            await runtime.db.execute(
-                "UPDATE users SET credits=credits+1 WHERE user_id=?",
-                (user.id,),
-            )
+        await refund_usage(runtime.db, user.id, "check", decision["consume"])
     await mark_first(runtime.db, "first_check")
     gate_label, health = await gate_view(runtime, outcome.gate)
     

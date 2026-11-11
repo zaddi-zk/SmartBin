@@ -10,7 +10,7 @@ from aiogram.types import Message
 
 import ui
 from core.canaries import percentile
-from handlers.common import parse_bin_arg
+from handlers.common import claim_usage, parse_bin_arg
 from models import utc_date
 from render import DISPLAY_VERSION, FOOTER_PREFIX, status_block, status_header
 from states import Flow
@@ -118,11 +118,26 @@ async def send_why(message: Message, runtime, bin_arg: str, user: Any = None) ->
         username=user.username or "",
         first_name=user.first_name or "",
     )
+    db_user = await runtime.db.reset_quota_if_needed(user.id)
     record = (
         await runtime.store.get(bin_arg)
         if len(bin_arg) == 8
         else await runtime.store.get_prefix(bin_arg)
     )
+    if record is None:
+        await message.answer(
+            f"❌ No data cached for BIN <code>{bin_arg}</code>",
+            parse_mode="HTML",
+            reply_markup=ui.menu_only_kb(),
+        )
+        return
+    # Full provenance + 2FA history is BIN intelligence: one daily lookup.
+    decision = await claim_usage(runtime.db, db_user, "bin", runtime.config)
+    if not decision["allowed"]:
+        await message.answer(
+            ui.paywall_text(), parse_mode="HTML", reply_markup=ui.paywall_kb()
+        )
+        return
     sources = _json(record.sources_json)
     confs = _json(record.field_conf_json)
     lines = [

@@ -1,53 +1,64 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
 from typing import Any
 
 from config import Config
-
-
-def parse_premium_until(raw: str | None) -> datetime | None:
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
-    except ValueError:
-        return None
-
-
-def is_premium(user: Any) -> bool:
-    until = parse_premium_until(user["premium_until"] if user is not None else "")
-    return until is not None and until > datetime.now(timezone.utc)
-
-
-def is_admin(user_id: int, config: Config) -> bool:
-    return bool(config.admin_id) and int(user_id) == int(config.admin_id)
+from quota import (
+    claim_usage,
+    daily_limit,
+    is_admin,
+    is_banned,
+    is_premium,
+    is_unlimited,
+    parse_premium_until,
+    quota_snapshot,
+    refund_usage,
+    remaining,
+    user_id,
+)
 
 
 def _user_id(user: Any) -> int:
+    return user_id(user)
+
+
+def _bonus(user: Any) -> int:
     try:
-        return int(user["user_id"])
-    except (KeyError, TypeError, ValueError):
+        return max(0, int(user["bonus_check"] or 0))
+    except (KeyError, TypeError, ValueError, IndexError):
         return 0
 
 
 def quota_decision(user: Any, kind: str, config: Config) -> dict[str, Any]:
-    """Returns allowed + what to consume. Paywall fires only after the free allowance."""
-    limit = config.free_bins_per_day if kind == "bin" else config.free_checks_per_day
+    """Pure preview of the daily allowance (no DB write).
+
+    Kept for callers/tests that only need to know whether a *next* use is
+    possible. Real consumption goes through `claim_usage`, which is atomic.
+    """
+    limit = daily_limit(kind, config)
+    bonus = _bonus(user) if kind == "check" else 0
+    allowance = limit + bonus
     if is_admin(_user_id(user), config) or is_premium(user):
-        return {"allowed": True, "consume": "premium", "limit": limit}
+        return {"allowed": True, "consume": "premium", "limit": allowance}
+    if is_banned(user):
+        return {"allowed": False, "consume": "banned", "limit": allowance, "used": 0}
     used = int(user[f"free_{kind}"])
     credits = int(user["credits"])
     if used < limit:
-        return {"allowed": True, "consume": "free", "limit": limit, "used": used}
+        return {"allowed": True, "consume": "free", "limit": allowance, "used": used}
+    if bonus > 0:
+        return {"allowed": True, "consume": "bonus", "limit": allowance, "used": used}
     if credits > 0:
-        return {"allowed": True, "consume": "credit", "limit": limit, "used": used}
-    return {"allowed": False, "consume": "paywall", "limit": limit, "used": used}
+        return {"allowed": True, "consume": "credit", "limit": allowance, "used": used}
+    return {"allowed": False, "consume": "paywall", "limit": allowance, "used": used}
 
 
 async def consume_quota(db: Any, user_id: int, kind: str, consume: str) -> None:
+    """Deprecated non-atomic helper, kept for older scripts.
+
+    New code must use `claim_usage`, which cannot over-grant under concurrency.
+    """
     if consume == "free":
         await db.execute(
             f"UPDATE users SET free_{kind}=free_{kind}+1 WHERE user_id=?", (user_id,)

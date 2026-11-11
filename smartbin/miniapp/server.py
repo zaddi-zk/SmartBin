@@ -14,6 +14,14 @@ from aiohttp import web
 from config import DISPLAY_VERSION
 from core.canaries import percentile
 from models import utc_date, utcnow_iso
+from quota import (
+    claim_usage,
+    is_admin,
+    is_banned,
+    is_premium,
+    quota_snapshot,
+    refund_usage,
+)
 
 log = logging.getLogger("smartbin.miniapp")
 
@@ -155,17 +163,21 @@ def _init_user(pairs: dict[str, Any]) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-async def _touch_user(runtime: Any, pairs: dict[str, Any]) -> None:
-    """Record Mini App activity for monthly-active counting."""
+async def _touch_user(runtime: Any, pairs: dict[str, Any]) -> Any:
+    """Record activity and return the fresh user row with today's quota."""
     data = _init_user(pairs)
-    user_id = data.get("id")
+    try:
+        user_id = int(data.get("id") or 0)
+    except (TypeError, ValueError):
+        return None
     if not user_id:
-        return
+        return None
     await runtime.db.ensure_user(
-        int(user_id),
+        user_id,
         username=data.get("username") or "",
         first_name=data.get("first_name") or "",
     )
+    return await runtime.db.reset_quota_if_needed(user_id)
 
 
 def _safe_uptime(runtime: Any) -> str:
@@ -175,12 +187,35 @@ def _safe_uptime(runtime: Any) -> str:
         return ""
 
 
-async def _safe_touch(runtime: Any, pairs: dict[str, Any]) -> None:
+async def _safe_touch(runtime: Any, pairs: dict[str, Any]) -> Any:
     """Activity accounting must never break a Mini App response."""
     try:
-        await _touch_user(runtime, pairs)
+        return await _touch_user(runtime, pairs)
     except Exception as exc:
         log.warning("event=miniapp_touch_failed error=%s", exc)
+        return None
+
+
+def _limit_response(user: Any, runtime: Any, kind: str) -> web.Response:
+    if is_banned(user):
+        return web.json_response(
+            {
+                "error": "Account restricted. Contact support.",
+                "code": "banned",
+                "kind": kind,
+                "quota": quota_snapshot(user, runtime.config),
+            },
+            status=403,
+        )
+    return web.json_response(
+        {
+            "error": "Daily free limit reached. Buy credits or premium to continue.",
+            "code": "limit_reached",
+            "kind": kind,
+            "quota": quota_snapshot(user, runtime.config),
+        },
+        status=402,
+    )
 
 
 def _degraded_status(runtime: Any) -> dict[str, Any]:
@@ -277,7 +312,9 @@ def create_app(runtime: Any) -> web.Application:
         pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
-        await _safe_touch(runtime, pairs)
+        user = await _safe_touch(runtime, pairs)
+        if user is None:
+            return web.json_response({"error": "user not found"}, status=401)
 
         raw = request.query.get("bin", "")
         digits = "".join(c for c in raw if c.isdigit())
@@ -292,24 +329,44 @@ def create_app(runtime: Any) -> web.Application:
             log.warning("event=miniapp_bin_failed bin=%s error=%s", digits, exc)
             return web.json_response({"error": "lookup unavailable"}, status=503)
         if record is None:
+            # A miss costs nothing.
             return web.json_response({"error": "BIN not found"}, status=404)
+
+        decision = await claim_usage(runtime.db, user, "bin", runtime.config)
+        if not decision["allowed"]:
+            return _limit_response(user, runtime, "bin")
+
+        fresh = await runtime.db.get_user(int(user["user_id"])) or user
         try:
-            payload = card_json(record, free=True)
+            payload = card_json(
+                record,
+                free=not (is_premium(fresh) or is_admin(int(fresh["user_id"]), runtime.config)),
+            )
         except Exception as exc:
+            await refund_usage(runtime.db, int(fresh["user_id"]), "bin", decision["consume"])
             log.warning("event=miniapp_card_failed bin=%s error=%s", digits, exc)
             return web.json_response({"error": "lookup unavailable"}, status=503)
+        payload["quota"] = quota_snapshot(fresh, runtime.config)
         return web.json_response(payload)
 
     async def api_status(request: web.Request) -> web.Response:
         pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
-        await _safe_touch(runtime, pairs)
+        user = await _safe_touch(runtime, pairs)
+        if user is None:
+            return web.json_response({"error": "user not found"}, status=401)
         try:
             payload = await status_json(runtime)
         except Exception as exc:
             log.warning("event=miniapp_status_failed error=%s", exc)
             payload = _degraded_status(runtime)
+        payload["quota"] = quota_snapshot(user, runtime.config)
+        payload["user"] = {
+            "id": int(user["user_id"]),
+            "credits": int(user["credits"] or 0),
+            "premium": is_premium(user),
+        }
         return web.json_response(payload)
 
     async def api_reflink(request: web.Request) -> web.Response:
@@ -327,16 +384,16 @@ def create_app(runtime: Any) -> web.Application:
         pairs = _auth_pairs(request, runtime)
         if pairs is None:
             return web.json_response({"error": "unauthorized"}, status=401)
-        await _safe_touch(runtime, pairs)
+        user = await _safe_touch(runtime, pairs)
+        if user is None:
+            return web.json_response({"error": "user not found"}, status=401)
 
         try:
             body = await request.json()
         except Exception:
             return web.json_response({"error": "invalid json"}, status=400)
 
-        card_raw = body.get("card", "").strip()
-        amount = body.get("amount", 1.0)
-
+        card_raw = str(body.get("card", "")).strip()
         if not card_raw or "|" not in card_raw:
             return web.json_response({"error": "invalid card format"}, status=400)
 
@@ -346,42 +403,34 @@ def create_app(runtime: Any) -> web.Application:
         except ValueError as e:
             return web.json_response({"error": str(e)}, status=400)
 
-        # Check user credits
-        user_data = _init_user(pairs)
-        user_id = user_data.get("id")
-        if not user_id:
-            return web.json_response({"error": "user not found"}, status=401)
+        uid = int(user["user_id"])
+        # Same rule as the bot: 2 free checks per day, then credits.
+        decision = await claim_usage(runtime.db, user, "check", runtime.config)
+        if not decision["allowed"]:
+            return _limit_response(user, runtime, "check")
 
-        db_user = await runtime.db.get_user(user_id)
-        if not db_user:
-            return web.json_response({"error": "user not in database"}, status=401)
-
-        if int(db_user["credits"]) < 1:
-            return web.json_response({"error": "insufficient credits"}, status=402)
-
-        # Run check
         try:
-            outcome = await runtime.runner.run(user_id, card_raw, purpose="check")
-            
-            # Deduct credit
-            await runtime.db.user_spend(user_id, 1)
-            
-            # Get updated credits
-            db_user = await runtime.db.get_user(user_id)
-            credits = int(db_user["credits"])
-            
-            return web.json_response({
-                "live": outcome.live,
-                "approved": outcome.live,
-                "verdict": outcome.verdict,
-                "message": outcome.message,
-                "latency_ms": outcome.latency_ms,
-                "credits": credits,
-                "card": card.masked()
-            })
+            outcome = await runtime.runner.run(uid, card_raw, purpose="check")
         except Exception as exc:
+            await refund_usage(runtime.db, uid, "check", decision["consume"])
             log.warning("event=miniapp_check_failed card=%s error=%s", card.masked(), exc)
             return web.json_response({"error": "check failed"}, status=503)
+
+        if outcome.verdict == "3DS-CHALLENGE":
+            # A challenge read is not a completed check.
+            await refund_usage(runtime.db, uid, "check", decision["consume"])
+
+        fresh = await runtime.db.get_user(uid) or user
+        return web.json_response({
+            "live": outcome.live,
+            "approved": outcome.live,
+            "verdict": outcome.verdict,
+            "message": outcome.message,
+            "latency_ms": outcome.latency_ms,
+            "credits": int(fresh["credits"] or 0),
+            "card": card.masked(),
+            "quota": quota_snapshot(fresh, runtime.config),
+        })
 
     async def health(request: web.Request) -> web.Response:
         """Health check with canary status."""
