@@ -632,24 +632,30 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
 
     age_text = f"{bin_age}y" if bin_age > 0 else "unknown"
 
+    brand_glyph = _brand_glyph(brand) or "💳"
+    type_glyph = _type_glyph(card_type) or "🏷️"
+    level_glyph = _level_glyph(level) or "👑"
+    twofa_glyph = GLYPH.get(f"3DS_{twofa}", "⚪")
+    avs_glyph = "✅" if avs else "❌"
+
     lines = [
-        f"BIN         {bin8}",
-        f"BRAND       {brand}",
-        f"TYPE        {card_type}",
-        f"TIER        {level}",
-        f"BANK        {bank_display}",
-        f"COUNTRY     {iso2}  {country}",
-        f"CURRENCY    {currency}",
-        f"PAN         {length}  luhn {'OK' if luhn_ok else 'FAIL'}  age {age_text}",
-        f"PREPAID     {_yes(prepaid)}",
-        f"COMMERCIAL  {_yes(commercial)}",
-        f"DEBIT       {_yes(atm_debit)}",
-        f"AVS         {'YES  full address' if avs else 'NO'}",
-        f"PHONE       {phone or 'UNKNOWN'}",
-        f"SITE        {site or 'UNKNOWN'}",
-        f"SOURCES     {source_names}",
-        f"VERIFIED    {verified or 'never'}",
-        f"SAMPLE      {sample_size}",
+        f"🧬 BIN         {bin8}",
+        f"{brand_glyph} BRAND       {brand}",
+        f"{type_glyph} TYPE        {card_type}",
+        f"{level_glyph} TIER        {level}",
+        f"🏦 BANK        {bank_display}",
+        f"📍 COUNTRY     {iso2}  {country}",
+        f"💱 CURRENCY    {currency}",
+        f"🔢 PAN         {length}  luhn {'OK' if luhn_ok else 'FAIL'}  age {age_text}",
+        f"🪙 PREPAID     {_yes(prepaid)}",
+        f"🏢 COMMERCIAL  {_yes(commercial)}",
+        f"🏧 DEBIT       {_yes(atm_debit)}",
+        f"{avs_glyph} AVS         {'YES  full address' if avs else 'NO'}",
+        f"☎️ PHONE       {phone or 'UNKNOWN'}",
+        f"🌐 SITE        {site or 'UNKNOWN'}",
+        f"📚 SOURCES     {source_names}",
+        f"🕒 VERIFIED    {verified or 'never'}",
+        f"🧪 SAMPLE      {sample_size}",
     ]
 
     for field in sorted(sources):
@@ -657,10 +663,10 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
         if not isinstance(provenance, dict):
             continue
         for name, raw in provenance.items():
-            lines.append(f"FIELD       {field} {conf(field)}%  {name}={raw}")
+            lines.append(f"📊 FIELD       {field} {conf(field)}%  {name}={raw}")
 
     lines.append(
-        f"3DS         {twofa}  conf {twofa_conf}  reads {twofa_reads}  last {twofa_last}"
+        f"{twofa_glyph} 3DS         {twofa}  conf {twofa_conf}  reads {twofa_reads}  last {twofa_last}"
     )
 
     if fleet_n >= 5:
@@ -670,14 +676,14 @@ def bin_card_block(record: Any, free: bool = False, now: datetime | None = None)
         hit = f"cold (n={fleet_n})"
     else:
         hit = "no data"
-    lines.append(f"HIT         {hit}")
-    lines.append(f"FLAGS       {'none' if not flags else ', '.join(flags)}")
-    lines.append(f"SEEN        {seen}")
+    lines.append(f"🎯 HIT         {hit}")
+    lines.append(f"🚩 FLAGS       {'none' if not flags else ', '.join(flags)}")
+    lines.append(f"👁️ SEEN        {seen}")
 
     if free:
         lines.append(WATERMARK)
     lines.append(
-        f"SMARTBIN v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
+        f"🧾 SMARTBIN v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
     )
 
     return "<pre>" + html.escape("\n".join(lines)) + "</pre>"

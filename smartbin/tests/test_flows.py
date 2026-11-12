@@ -147,7 +147,7 @@ class GuidedFlowTest(unittest.TestCase):
             await feed(update(message=_message(uid, "45717360")))
             text = session.last_text()
             self.assertIn("45717360", text)
-            self.assertIn("<pre>BIN         45717360", text)
+            self.assertIn("<pre>🧬 BIN         45717360", text)
             self.assertIn("BANK", text)
             self.assertIn("Jyske Bank", text)
             self.assertIn("3DS", text)
