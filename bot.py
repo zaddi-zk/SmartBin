@@ -103,8 +103,18 @@ async def main() -> int:
     description_task = asyncio.create_task(
         description_loop(bot, runtime), name="smartbin-description"
     )
+    # A webhook blocks getUpdates. Clear any stale webhook and queued updates
+    # once, before taking the polling session. This does not stop a second bot
+    # process: only one instance may poll a given token at a time.
     try:
-        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+        await bot.delete_webhook(drop_pending_updates=True)
+    except Exception as exc:
+        log.warning("event=delete_webhook_failed error=%s", exc)
+    try:
+        await dp.start_polling(
+            bot,
+            allowed_updates=dp.resolve_used_update_types(),
+        )
     except asyncio.CancelledError:
         raise
     except Exception as exc:
