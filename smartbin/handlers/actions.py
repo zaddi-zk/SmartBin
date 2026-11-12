@@ -55,6 +55,7 @@ async def _bin_result(
     await runtime.db.stats_bump(f"day:{utc_date()}:bins")
     await message.answer(
         card_block(record, free=free_watermark(db_user, runtime.config)),
+        parse_mode="HTML",
         reply_markup=ui.bin_kb(arg),
     )
 
