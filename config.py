@@ -7,7 +7,8 @@ from pathlib import Path
 DISPLAY_VERSION = "7.1.0"
 
 _ENV_KEYS = (
-    "BOT_TOKEN ADMIN_ID DB_PATH DATABASE_URL MINIAPP_PORT PORT MINIAPP_BASE STRIPE_API_KEY "
+    "BOT_TOKEN ADMIN_ID DB_PATH DATABASE_URL MINIAPP_PORT PORT MINIAPP_BASE "
+    "STRIPE_API_KEY STRIPE_API_KEYS "
     "STRIPE_TEST_MODE CANARY_NONVBV CANARY_VBV CANARY_DEAD "
     "FREE_BINS_PER_DAY FREE_CHECKS_PER_DAY STARS_DAY STARS_MONTH "
     "STARS_CREDITS_500 CORRECTION_REWARD LRU_SIZE BIN_CACHE_DAYS "
@@ -56,6 +57,18 @@ def _bool(env: dict[str, str], key: str, default: bool) -> bool:
     return raw.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _stripe_keys(env: dict[str, str]) -> tuple[str, ...]:
+    """Accept one or many keys, split on commas, semicolons, spaces or newlines."""
+    raw = " ".join(
+        env.get(name, "") for name in ("STRIPE_API_KEYS", "STRIPE_API_KEY")
+    )
+    keys: list[str] = []
+    for part in raw.replace(",", " ").replace(";", " ").split():
+        if part and part not in keys:
+            keys.append(part)
+    return tuple(keys)
+
+
 @dataclass
 class Config:
     bot_token: str = ""
@@ -66,6 +79,7 @@ class Config:
     miniapp_base: str = "https://smartbin-eurr.onrender.com"
 
     stripe_api_key: str = ""
+    stripe_api_keys: tuple[str, ...] = ()
     stripe_test_mode: bool = True
 
     canary_nonvbv: str = "4242424242424242|12|2030|123"
@@ -99,6 +113,7 @@ class Config:
     @classmethod
     def load(cls, path: str = ".env") -> "Config":
         env = load_env(path)
+        stripe_keys = _stripe_keys(env)
         return cls(
             bot_token=env.get("BOT_TOKEN", ""),
             admin_id=_int(env, "ADMIN_ID", 0),
@@ -106,7 +121,8 @@ class Config:
             database_url=env.get("DATABASE_URL", "").strip(),
             miniapp_port=_int(env, "MINIAPP_PORT", _int(env, "PORT", 8877)),
             miniapp_base=env.get("MINIAPP_BASE", "https://smartbin-eurr.onrender.com"),
-            stripe_api_key=env.get("STRIPE_API_KEY", ""),
+            stripe_api_key=stripe_keys[0] if stripe_keys else "",
+            stripe_api_keys=stripe_keys,
             stripe_test_mode=_bool(env, "STRIPE_TEST_MODE", True),
             canary_nonvbv=env.get("CANARY_NONVBV") or cls.canary_nonvbv,
             canary_vbv=env.get("CANARY_VBV") or cls.canary_vbv,

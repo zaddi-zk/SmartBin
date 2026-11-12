@@ -56,7 +56,8 @@ The migration is idempotent: re-running only fills in missing rows.
 | `DB_PATH` | SQLite file (default `smartbin.db`) |
 | `DATABASE_URL` | Supabase/Postgres URL; when set it overrides `DB_PATH` |
 | `MINIAPP_PORT` / `MINIAPP_BASE` | aiohttp bind port and public URL |
-| `STRIPE_API_KEY` | Stripe secret key for live mode |
+| `STRIPE_API_KEYS` | One or more Stripe secret keys, comma/newline separated; rejected keys cool down and the next one is used |
+| `STRIPE_API_KEY` | Legacy single key; still accepted and merged with `STRIPE_API_KEYS` |
 | `STRIPE_TEST_MODE` | `1` = deterministic test cards, no money |
 | `CANARY_NONVBV` / `CANARY_VBV` / `CANARY_DEAD` | `number\|MM\|YY\|CVV` canary cards |
 | `FREE_BINS_PER_DAY` / `FREE_CHECKS_PER_DAY` | Daily free quota |

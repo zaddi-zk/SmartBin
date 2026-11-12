@@ -85,10 +85,18 @@ async def dashboard(runtime) -> str:
     premium = int(await db.scalar("SELECT COUNT(*) FROM users WHERE premium_until > ?", (utcnow_iso(),), 0))
     dist = ", ".join(f"{k}:{v}" for k, v in verdicts.items()) or "none"
     pending = await db.count("corrections", "status='pending'")
+    key_rows = runtime.gates.stripe_keys.snapshot()
+    key_ready = sum(1 for row in key_rows if row["ready"])
+    key_line = (
+        f"{key_ready}/{len(key_rows)} ready"
+        if key_rows
+        else "0 (test mode / unset)"
+    )
     return (
         "ADMIN DASHBOARD\n\n"
         f"users          {await db.count('users')}   monthly {await db.monthly_users()}\n"
         f"premium        {premium}\n"
+        f"stripe keys    {key_line}\n"
         f"checks today   {int(stats.get('day:' + utc_date() + ':checks', 0))}\n"
         f"revenue        {revenue} XTR\n"
         f"proxies        {await db.count('proxies')}\n"

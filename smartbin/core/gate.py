@@ -12,6 +12,13 @@ from urllib.parse import urlsplit
 import httpx
 
 from config import Config
+from core.stripe_keys import (
+    KEY_REJECTED_CODES,
+    StripeKeyRateLimited,
+    StripeKeyRejected,
+    StripeKeyRing,
+    fingerprint,
+)
 from models import Card
 from util_net import make_client
 
@@ -38,6 +45,12 @@ class GateManager:
 
     def __init__(self, config: Config):
         self.config = config
+        keys = config.stripe_api_keys or (
+            (config.stripe_api_key,) if config.stripe_api_key else ()
+        )
+        self.stripe_keys = StripeKeyRing(keys)
+        if self.stripe_keys:
+            log.info("event=stripe_keys_loaded count=%d", len(self.stripe_keys))
         self.global_sem = asyncio.Semaphore(60)
         self.gate_sems: dict[str, asyncio.Semaphore] = {}
 
@@ -118,11 +131,69 @@ class GateManager:
     async def _stripe(
         self, card: Card, amount_minor: int, proxy: str | None
     ) -> dict[str, Any]:
-        if not self.config.stripe_api_key:
+        if not self.stripe_keys:
             log.error("event=stripe_no_api_key card=%s", card.masked())
             return {"error": "STRIPE_API_KEY missing", "decline_code": "generic_decline"}
-        
-        auth = (self.config.stripe_api_key, "")
+
+        candidates = self.stripe_keys.candidates()
+        if not candidates:
+            log.error(
+                "event=stripe_all_keys_cooling configured=%d",
+                len(self.stripe_keys),
+            )
+            return {
+                "error": "all Stripe keys are cooling down",
+                "decline_code": "generic_decline",
+            }
+
+        last_error: dict[str, Any] = {
+            "error": "stripe unavailable",
+            "decline_code": "generic_decline",
+        }
+        for key in candidates:
+            try:
+                result = await self._stripe_charge(key, card, amount_minor, proxy)
+            except StripeKeyRejected as exc:
+                self.stripe_keys.mark_rejected(key)
+                log.warning(
+                    "event=stripe_key_rejected key=%s code=%s reason=%s",
+                    fingerprint(key),
+                    exc.code or "-",
+                    exc,
+                )
+                last_error = {
+                    "error": str(exc),
+                    "decline_code": "",
+                    "raw_code": exc.code,
+                }
+                continue
+            except StripeKeyRateLimited:
+                self.stripe_keys.mark_rate_limited(key)
+                log.warning(
+                    "event=stripe_key_rate_limited key=%s",
+                    fingerprint(key),
+                )
+                last_error = {"error": "stripe rate limited", "decline_code": ""}
+                continue
+
+            self.stripe_keys.mark_healthy(key)
+            return result
+
+        return last_error
+
+    async def _stripe_charge(
+        self,
+        key: str,
+        card: Card,
+        amount_minor: int,
+        proxy: str | None,
+    ) -> dict[str, Any]:
+        """One auth-and-void attempt with a single key/account.
+
+        Payment methods belong to the account, so the whole attempt must use
+        the same key. A rejected key raises and the caller rotates.
+        """
+        auth = (key, "")
         async with make_client(proxy=proxy, timeout=12.0) as client:
             pm = await self._stripe_post(
                 client,
@@ -162,13 +233,20 @@ class GateManager:
 
             status = str(intent.get("status") or "")
             if status in ("succeeded", "requires_capture"):
-                await self._stripe_post(
-                    client,
-                    f"https://api.stripe.com/v1/payment_intents/{intent.get('id')}/cancel",
-                    auth,
-                    {},
-                    tolerate_errors=True,
-                )
+                try:
+                    await self._stripe_post(
+                        client,
+                        f"https://api.stripe.com/v1/payment_intents/{intent.get('id')}/cancel",
+                        auth,
+                        {},
+                        tolerate_errors=True,
+                    )
+                except (StripeKeyRejected, StripeKeyRateLimited):
+                    log.warning(
+                        "event=stripe_void_failed key=%s intent=%s",
+                        fingerprint(key),
+                        intent.get("id"),
+                    )
                 return {"approved": True, "status": status}
 
             if status == "requires_action":
@@ -199,27 +277,43 @@ class GateManager:
         data: dict[str, str],
         tolerate_errors: bool = False,
     ) -> dict[str, Any]:
+        retry_single_key = len(self.stripe_keys) <= 1
         delay = 1.0
         for attempt in range(3):
             response = await client.post(url, auth=auth, data=data)
-            if response.status_code == 429 and attempt < 2:
-                await asyncio.sleep(delay)
-                delay *= 2
-                continue
             try:
                 payload = response.json()
             except ValueError:
                 payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            error = payload.get("error") or {}
+            if not isinstance(error, dict):
+                error = {}
+            if response.status_code == 429:
+                if tolerate_errors:
+                    return payload
+                if retry_single_key and attempt < 2:
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                raise StripeKeyRateLimited("stripe rate limited")
             if response.status_code >= 400:
                 if tolerate_errors:
-                    return payload if isinstance(payload, dict) else {}
-                error = payload.get("error") if isinstance(payload, dict) else {}
+                    return payload
+                message = str(error.get("message") or response.text[:200])
+                code = str(error.get("code") or "")
+                if (
+                    response.status_code in (401, 403)
+                    or code.lower() in KEY_REJECTED_CODES
+                ):
+                    raise StripeKeyRejected(message, code)
                 return {
-                    "error": str((error or {}).get("message") or response.text[:200]),
-                    "decline_code": str((error or {}).get("decline_code") or ""),
-                    "raw_code": str((error or {}).get("code") or ""),
+                    "error": message,
+                    "decline_code": str(error.get("decline_code") or ""),
+                    "raw_code": code,
                 }
-            return payload if isinstance(payload, dict) else {}
+            return payload
         return {"error": "stripe rate limited"}
 
     # ========== AUTHNET ==========
