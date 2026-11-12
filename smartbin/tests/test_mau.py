@@ -21,6 +21,21 @@ class _FakeBot:
         self.long[language_code] = description
 
 
+class _FakeDB:
+    def __init__(self, count: int | Exception):
+        self._count = count
+
+    async def monthly_users(self) -> int:
+        if isinstance(self._count, Exception):
+            raise self._count
+        return self._count
+
+
+class _FakeRuntime:
+    def __init__(self, count: int | Exception):
+        self.db = _FakeDB(count)
+
+
 class MonthlyUsersTest(unittest.TestCase):
     def test_monthly_active_count(self):
         asyncio.run(self._run())
@@ -42,6 +57,12 @@ class MonthlyUsersTest(unittest.TestCase):
             # Any new interaction makes the user active again.
             await db.ensure_user(2, "b", "B")
             self.assertEqual(await db.monthly_users(), 2)
+
+            # Rows from before activity tracking have no last_seen: count them
+            # from joined_utc instead of silently dropping them.
+            await db.ensure_user(3, "c", "C")
+            await db.update_user(3, last_seen_utc="")
+            self.assertEqual(await db.monthly_users(), 3)
         finally:
             await db.close()
 
@@ -113,19 +134,30 @@ class MonthlyUsersTest(unittest.TestCase):
         asyncio.run(self._run_description())
 
     async def _run_description(self):
-        from description import LONG_DESCRIPTION, SHORT_DESCRIPTION, update_description
+        from description import SHORT_DESCRIPTION, update_description
 
         bot = _FakeBot()
-        text = await update_description(bot)
-        self.assertEqual(text, LONG_DESCRIPTION)
-        # Taglines only; no user count in the profile.
-        self.assertEqual(bot.long[None], "CCs🔪🔪🔪🔥")
-        self.assertEqual(bot.long["en"], "CCs🔪🔪🔪🔥")
+        runtime = _FakeRuntime(26)
+        text = await update_description(bot, runtime)
+        self.assertEqual(text, "26 monthly users")
+        # Count goes under the bot name in every language variant.
+        self.assertEqual(bot.long[None], "26 monthly users")
+        self.assertEqual(bot.long["en"], "26 monthly users")
         self.assertEqual(bot.short[None], SHORT_DESCRIPTION)
         self.assertEqual(bot.short["en"], SHORT_DESCRIPTION)
-        self.assertEqual(SHORT_DESCRIPTION, "CC Checker & Killer 🔪")
-        self.assertNotIn("monthly", LONG_DESCRIPTION.lower())
-        self.assertNotIn("monthly", SHORT_DESCRIPTION.lower())
+
+    def test_description_is_skipped_when_count_fails(self):
+        asyncio.run(self._run_description_failure())
+
+    async def _run_description_failure(self):
+        from description import update_description
+
+        bot = _FakeBot()
+        text = await update_description(bot, _FakeRuntime(RuntimeError("db down")))
+        self.assertIsNone(text)
+        # A DB hiccup must not overwrite the live profile text.
+        self.assertEqual(bot.long, {})
+        self.assertEqual(bot.short, {})
 
 
 if __name__ == "__main__":

@@ -584,11 +584,19 @@ class DB:
         return await self.fetchone("SELECT * FROM users WHERE user_id=?", (user_id,))
 
     async def monthly_users(self, days: int = 30) -> int:
-        """Users seen in the last N days (monthly active users)."""
+        """Users who used the bot in the last N days.
+
+        Rows created before activity tracking existed have an empty
+        last_seen_utc, so fall back to joined_utc instead of dropping them.
+        """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
-        return await self.count("users", "last_seen_utc >= ?", (cutoff,))
+        return await self.count(
+            "users",
+            "COALESCE(NULLIF(last_seen_utc, ''), joined_utc) >= ?",
+            (cutoff,),
+        )
 
     async def touch_user(
         self, user_id: int, username: str = "", first_name: str = ""
