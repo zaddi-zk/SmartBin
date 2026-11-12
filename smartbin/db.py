@@ -583,10 +583,6 @@ class DB:
     async def get_user(self, user_id: int) -> Any:
         return await self.fetchone("SELECT * FROM users WHERE user_id=?", (user_id,))
 
-    async def user_count(self) -> int:
-        """Every user who has started the bot (all-time, not a 30-day window)."""
-        return await self.count("users")
-
     async def monthly_users(self, days: int = 30) -> int:
         """Users who used the bot in the last N days.
 
