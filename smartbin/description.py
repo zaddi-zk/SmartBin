@@ -16,7 +16,7 @@ SHORT_DESCRIPTION = "CC Checker & Killer 🔪"
 
 def profile_text(count: int) -> str:
     """Line under the bot name: live count of people using the bot."""
-    return f"{count:,} monthly users"
+    return f"{count:,} users"
 
 
 async def _user_count(runtime: Any) -> int | None:

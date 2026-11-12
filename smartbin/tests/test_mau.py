@@ -139,10 +139,10 @@ class MonthlyUsersTest(unittest.TestCase):
         bot = _FakeBot()
         runtime = _FakeRuntime(26)
         text = await update_description(bot, runtime)
-        self.assertEqual(text, "26 monthly users")
+        self.assertEqual(text, "26 users")
         # Count goes under the bot name in every language variant.
-        self.assertEqual(bot.long[None], "26 monthly users")
-        self.assertEqual(bot.long["en"], "26 monthly users")
+        self.assertEqual(bot.long[None], "26 users")
+        self.assertEqual(bot.long["en"], "26 users")
         self.assertEqual(bot.short[None], SHORT_DESCRIPTION)
         self.assertEqual(bot.short["en"], SHORT_DESCRIPTION)
 
