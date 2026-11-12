@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -442,6 +443,7 @@ def create_app(runtime: Any) -> web.Application:
             return web.json_response({
                 "status": "healthy",
                 "version": DISPLAY_VERSION,
+                "commit": (os.environ.get("RENDER_GIT_COMMIT") or "")[:7],
                 "time": utcnow_iso(),
                 "canary_24h": {
                     "total": canary_24h.total if canary_24h else 0,

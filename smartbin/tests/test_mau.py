@@ -25,7 +25,7 @@ class _FakeDB:
     def __init__(self, count: int | Exception):
         self._count = count
 
-    async def monthly_users(self) -> int:
+    async def user_count(self) -> int:
         if isinstance(self._count, Exception):
             raise self._count
         return self._count

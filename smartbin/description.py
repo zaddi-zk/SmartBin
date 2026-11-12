@@ -19,11 +19,11 @@ def profile_text(count: int) -> str:
     return f"{count:,} monthly users"
 
 
-async def _monthly_users(runtime: Any) -> int | None:
+async def _user_count(runtime: Any) -> int | None:
     if runtime is None:
         return None
     try:
-        return int(await runtime.db.monthly_users())
+        return int(await runtime.db.user_count())
     except Exception as exc:
         log.warning("event=description_count_failed error=%s", exc)
         return None
@@ -31,7 +31,7 @@ async def _monthly_users(runtime: Any) -> int | None:
 
 async def update_description(bot: Any, runtime: Any = None) -> str | None:
     """Publish the live user count under the bot name and keep the tagline."""
-    count = await _monthly_users(runtime)
+    count = await _user_count(runtime)
     if count is None:
         # Never replace a good count with a guess when the DB hiccups.
         return None
