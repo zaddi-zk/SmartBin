@@ -181,14 +181,97 @@ class CanaryCard(Base):
     last_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class BinCacheRow(Base):
-    __tablename__ = "bin_cache"
+class BinRecordRow(Base):
+    """Section 17.2: one row per looked-up BIN, with provenance beside it."""
+
+    __tablename__ = "bin_record"
 
     bin: Mapped[str] = mapped_column(String(8), primary_key=True)
-    json: Mapped[dict[str, Any]] = mapped_column(JSONType)
-    sources: Mapped[int] = mapped_column(Integer, default=0)
+    parent6: Mapped[str] = mapped_column(String(6), default="")
+    brand: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    type: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    tier: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    prepaid: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    commercial: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    debit: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    bank_short: Mapped[str | None] = mapped_column(String(96), nullable=True)
+    bank_legal: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    bank_phone: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    bank_site: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    iso2: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    pan_len: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    range_lo: Mapped[str | None] = mapped_column(String(19), nullable=True)
+    range_hi: Mapped[str | None] = mapped_column(String(19), nullable=True)
     confidence: Mapped[int] = mapped_column(Integer, default=0)
-    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    conflicts: Mapped[int] = mapped_column(Integer, default=0)
+    flags: Mapped[list[str]] = mapped_column(StrList, default=list)
+    sources_n: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ttl_days: Mapped[int] = mapped_column(Integer, default=7)
+
+
+class BinSourceRow(Base):
+    __tablename__ = "bin_source"
+
+    bin: Mapped[str] = mapped_column(String(8), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    field: Mapped[str] = mapped_column(String(32), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[int] = mapped_column(Integer, default=0)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Bin3dsRow(Base):
+    """Probe channel (advisory): a funded canary of the same country.
+
+    Passive reads live in :class:`Bin3dsPassiveRow` and are authoritative.
+    """
+
+    __tablename__ = "bin_3ds"
+
+    bin: Mapped[str] = mapped_column(String(8), primary_key=True)
+    probe_reads: Mapped[int] = mapped_column(Integer, default=0)
+    probe_challenges: Mapped[int] = mapped_column(Integer, default=0)
+    probe_last_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    probe_last_state: Mapped[str] = mapped_column(String(8), default="")
+    source: Mapped[str] = mapped_column(Text, default="probe")
+
+
+class Bin3dsPassiveRow(Base):
+    """Passive channel (authoritative): written by real card dispatches."""
+
+    __tablename__ = "bin_3ds_passive"
+
+    bin: Mapped[str] = mapped_column(String(8), primary_key=True)
+    reads: Mapped[int] = mapped_column(Integer, default=0)
+    challenges: Mapped[int] = mapped_column(Integer, default=0)
+    last_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_state: Mapped[str] = mapped_column(String(8), default="")
+
+
+class BinHitsRow(Base):
+    __tablename__ = "bin_hits"
+
+    bin: Mapped[str] = mapped_column(String(8), primary_key=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    approved: Mapped[int] = mapped_column(Integer, default=0)
+    last_hit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    users: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class BinFieldReportRow(Base):
+    __tablename__ = "bin_field_report"
+
+    id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
+    bin: Mapped[str] = mapped_column(String(8))
+    field: Mapped[str] = mapped_column(String(32))
+    claimed: Mapped[str] = mapped_column(Text, default="")
+    user_id: Mapped[int] = mapped_column(BigInteger)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class GateSampleRow(Base):

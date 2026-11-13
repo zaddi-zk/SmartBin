@@ -8,6 +8,7 @@ from app.config import Settings
 from app.core.parse import Card
 from app.core.verdicts import Verdict
 from app.db import repo
+from app.db.models import Bin3dsPassiveRow, Bin3dsRow, BinHitsRow
 from app.db.seed import seed_gates
 from app.exec.check import CheckExecutor
 from app.keys.manager import KeyManager
@@ -74,6 +75,13 @@ async def test_approved_debits_one(session: AsyncSession) -> None:
     assert outcome.debited == Decimal("1")
     assert outcome.balance == Decimal("9")
     assert outcome.provider_ref == "seti_1"
+    passive = await session.get(Bin3dsPassiveRow, CARD.bin8)
+    assert passive is not None
+    assert passive.reads == 1
+    assert passive.challenges == 0
+    assert passive.last_state == "NO"
+    hits = await session.get(BinHitsRow, CARD.bin8)
+    assert hits is not None and hits.attempts == 1 and hits.approved == 1
 
 
 async def test_retry_is_free_and_never_terminal(session: AsyncSession) -> None:
@@ -83,6 +91,9 @@ async def test_retry_is_free_and_never_terminal(session: AsyncSession) -> None:
     assert outcome.verdict is Verdict.GATE_FAULT
     assert outcome.debited == Decimal("0")
     assert Decimal(user.credits) == Decimal("10")
+    # A retry is not a dispatch for the record: no hit and no 3DS evidence.
+    assert await session.get(BinHitsRow, CARD.bin8) is None
+    assert await session.get(Bin3dsPassiveRow, CARD.bin8) is None
 
 
 async def test_timeout_is_inconclusive_and_free(session: AsyncSession) -> None:
@@ -108,6 +119,12 @@ async def test_3ds_costs_half(session: AsyncSession) -> None:
     assert outcome.verdict is Verdict.LIVE_3DS
     assert outcome.debited == Decimal("0.5")
     assert outcome.acs_url == "https://acs.example/1"
+    passive = await session.get(Bin3dsPassiveRow, CARD.bin8)
+    assert passive is not None
+    assert passive.reads == 1
+    assert passive.challenges == 1
+    assert passive.last_state == "YES"
+    assert await session.get(Bin3dsRow, CARD.bin8) is None
 
 
 async def test_dead_is_terminal_and_free(session: AsyncSession) -> None:
@@ -119,3 +136,7 @@ async def test_dead_is_terminal_and_free(session: AsyncSession) -> None:
     assert outcome.verdict is Verdict.DEAD
     assert outcome.decline_code == "generic_decline"
     assert outcome.debited == Decimal("0")
+    hits = await session.get(BinHitsRow, CARD.bin8)
+    assert hits is not None and hits.attempts == 1 and hits.approved == 0
+    # A decline is not a 3DS read.
+    assert await session.get(Bin3dsPassiveRow, CARD.bin8) is None

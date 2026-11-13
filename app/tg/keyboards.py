@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from aiogram.types import InlineKeyboardButton as B
 from aiogram.types import InlineKeyboardMarkup as KB
 
+from app.bin.model import BinRecord
+from app.core.parse import fmt_cr
 from app.exec.check import CheckOutcome
-from app.routing.router import GateView
+from app.routing.router import GateView, route
 
 
 def _kb(*rows: list[B]) -> KB:
@@ -121,11 +125,87 @@ def kill_result() -> KB:
     )
 
 
-def bin_result(best_gate: str | None) -> KB:
+def _probe_free(record: BinRecord, now: datetime | None = None) -> bool:
+    """A re-probe within the same hour is free (same ledger idem key)."""
+    moment = record.r3ds.probe_last_at
+    if moment is None:
+        return False
+    current = now or datetime.now(UTC)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return 0 <= (current - moment).total_seconds() < 3600
+
+
+def bin_result(record: BinRecord, gates: list[GateView]) -> KB:
+    """Section 17.7: exactly one copy button, and ▶️ is swapped for 🔄 when stale."""
     rows: list[list[B]] = []
-    if best_gate:
-        rows.append([B(text="🛡️ Run on best gate", callback_data=f"bin:run:{best_gate}")])
-    rows.append([B(text="🔍 New BIN", callback_data="bin:new"), back()])
+    ranked = route(gates, record.iso2 or "", "auth")
+    top = ranked[0] if ranked else None
+    if record.stale:
+        rows.append(
+            [B(text="🔄 Refresh sources · stale", callback_data=f"bin:ref:{record.bin}")]
+        )
+    elif top is not None:
+        rows.append(
+            [
+                B(
+                    text=f"▶️ Check on {top.label} · {fmt_cr(top.cost_cr)}cr",
+                    callback_data=f"bin:run:{record.bin}:{top.id}",
+                )
+            ]
+        )
+    if record.r3ds.reads < 3:
+        label = "🔐 Re-probe 3DS · free" if _probe_free(record) else "🔐 Measure 3DS · 1cr"
+        rows.append([B(text=label, callback_data=f"bin:3ds:{record.bin}")])
+    rows.append(
+        [
+            B(text="🛡️ All gates", callback_data=f"bin:gates:{record.bin}"),
+            B(text="🧠 Evidence", callback_data=f"bin:why:{record.bin}"),
+            B(text="🩺 Doctor", callback_data=f"bin:doc:{record.bin}"),
+        ]
+    )
+    rows.append(
+        [
+            B(text="➕ Mass", callback_data=f"bin:mass:{record.bin}"),
+            B(text="📤 Share", callback_data=f"bin:share:{record.bin}"),
+        ]
+    )
+    rows.append(
+        [
+            B(text="📋 Copy", callback_data=f"bin:copy:{record.bin}"),
+            B(text="🏠 Menu", callback_data="hub:main"),
+        ]
+    )
+    return _kb(*rows)
+
+
+def bin_back(bin_: str) -> KB:
+    return _kb(
+        [B(text="⬅️ Back to BIN", callback_data=f"bin:show:{bin_}")],
+        [B(text="🏠 Menu", callback_data="hub:main")],
+    )
+
+
+def bin_report(bin_: str) -> KB:
+    return _kb(
+        [B(text="🩹 Report wrong field", callback_data=f"bin:report:{bin_}")],
+        [B(text="⬅️ Back to BIN", callback_data=f"bin:show:{bin_}")],
+    )
+
+
+def bin_evidence(bin_: str) -> KB:
+    """Evidence is the framing; the raw source rows live one tap away."""
+    return _kb(
+        [B(text="📚 Source rows", callback_data=f"bin:src:{bin_}")],
+        [B(text="⬅️ Back to BIN", callback_data=f"bin:show:{bin_}")],
+    )
+
+
+def bin_report_fields(bin_: str, fields: list[str]) -> KB:
+    rows = [
+        [B(text=field, callback_data=f"bin:repf:{bin_}:{field}")] for field in fields[:12]
+    ]
+    rows.append([B(text="⬅️ Back", callback_data=f"bin:show:{bin_}")])
     return _kb(*rows)
 
 

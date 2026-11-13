@@ -21,7 +21,7 @@ from app.core import ledger
 from app.core.breaker import Breaker, BreakerState
 from app.core.parse import Card
 from app.core.taxonomy import classify, extract_decline_code
-from app.core.verdicts import Verdict, charge_for, is_terminal
+from app.core.verdicts import Verdict, charge_for, is_fault, is_terminal
 from app.db import repo
 from app.db.models import User
 from app.keys.manager import KeyManager
@@ -112,6 +112,62 @@ class CheckExecutor:
         states = await repo.gate_states(session)
         return [build_view(gate, states.get(gate.id)) for gate in gates]
 
+    async def probe(
+        self,
+        session: AsyncSession,
+        *,
+        card: Card,
+        gate: GateView,
+        amount_cents: int = 0,
+        capture: bool = False,
+    ) -> tuple[Verdict, str]:
+        """One canary authorization for the 3DS measurement (section 17.4).
+
+        This is not a user check: it writes no ``checks`` row and no
+        ``bin_hits`` row. The caller owns the 1-cr probe debit.
+        """
+        adapter = self.adapters.get(gate.processor)
+        if adapter is None:
+            return Verdict.GATE_FAULT, "adapter_missing"
+
+        key_row = await repo.pick_key(session, gate.id)
+        if key_row is None:
+            await self.fault(session, gate.id, "no_key")
+            return Verdict.GATE_FAULT, "no_key"
+
+        key = self.keys.to_key(key_row)
+        proxy_url = await self.proxies.bind(session, key_row, key)
+        if proxy_url is None and self.settings.require_proxy:
+            await self.keys.bench(session, key.id, "no_egress")
+            await self.fault(session, gate.id, "no_egress")
+            return Verdict.GATE_FAULT, "no_egress"
+
+        raw, latency = await self._call(
+            adapter,
+            key,
+            card,
+            amount_cents,
+            capture=capture,
+            proxy_url=proxy_url,
+        )
+        verdict, code = self._classify(raw)
+        log_check(
+            user_id=0,
+            gate_id=gate.id,
+            key_id=key.id,
+            proxy_id=key.proxy_id,
+            status=raw.status,
+            code=code,
+            decline_code=extract_decline_code(raw.body),
+            provider_ref=raw.provider_ref,
+            api_version=adapter.version,
+            latency_ms=latency,
+            verdict=verdict.value,
+            lane="3ds_probe",
+        )
+        await self.record_sample(session, gate.id, latency, verdict)
+        return verdict, code
+
     async def run(
         self,
         session: AsyncSession,
@@ -190,6 +246,13 @@ class CheckExecutor:
                 latency_ms=latency,
                 verdict=verdict.value,
             )
+            # Passive, authoritative 3DS evidence. Only a real dispatch with a
+            # terminal 3DS answer counts; RETRY/KEY_DEAD/GATE_FAULT/INCONCLUSIVE
+            # are not evidence and never reach this branch.
+            if verdict in (Verdict.LIVE_3DS, Verdict.APPROVED):
+                await repo.bump_passive_3ds(
+                    session, card.bin8, challenged=verdict is Verdict.LIVE_3DS
+                )
             attempt = Attempt(
                 gate_id=gate.id,
                 label=gate.label,
@@ -231,6 +294,11 @@ class CheckExecutor:
         amount = amount_cents if amount_cents is not None else chosen_gate.amount_cents
         if chosen_gate.lane == "charge" and chosen.verdict is Verdict.APPROVED:
             chosen = await self._settle(chosen, chosen_gate, chosen_key, amount, chosen_proxy)
+
+        approved = chosen.verdict in (Verdict.APPROVED, Verdict.LIVE, Verdict.LIVE_3DS)
+        # Once per card dispatch, and never for a retry, dead key or gate fault.
+        if chosen.verdict is not Verdict.KEY_DEAD and not is_fault(chosen.verdict):
+            await repo.bump_bin_hits(session, card.bin8, approved=approved, user_id=user.id)
 
         cost = Decimal(chosen_gate.cost_cr) * charge_for(chosen.verdict)
         check = await repo.create_check(

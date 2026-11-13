@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import ledger
 from app.core.parse import Card
 from app.core.taxonomy import classify, extract_decline_code
-from app.core.verdicts import Verdict, is_terminal
+from app.core.verdicts import Verdict, is_fault, is_terminal
 from app.db import repo
 from app.db.models import User
 from app.exec.check import NO_BYTES, CheckExecutor
@@ -129,6 +129,13 @@ class KillExecutor:
                 if raw.status == NO_BYTES
                 else classify(raw.status, raw.body)
             )
+            # Passive 3DS evidence from a real dispatch. Kill cancels an
+            # approval immediately, but the authorization itself still proves
+            # whether this BIN was challenged.
+            if verdict in (Verdict.LIVE_3DS, Verdict.APPROVED):
+                await repo.bump_passive_3ds(
+                    session, card.bin8, challenged=verdict is Verdict.LIVE_3DS
+                )
             rung = KillRung(
                 amount_cents=amount,
                 verdict=verdict,
@@ -188,6 +195,14 @@ class KillExecutor:
                 rung.debited = debit
             if best is None or self._rank(verdict) > self._rank(best):
                 best = verdict
+
+        if rungs and best is not None and best is not Verdict.KEY_DEAD and not is_fault(best):
+            await repo.bump_bin_hits(
+                session,
+                card.bin8,
+                approved=best in (Verdict.APPROVED, Verdict.LIVE, Verdict.LIVE_3DS),
+                user_id=user.id,
+            )
 
         if total > 0:
             check = await repo.create_check(

@@ -11,3 +11,4 @@ class Flow(StatesGroup):
     await_proxy = State()
     await_bin = State()
     await_grant = State()
+    await_report = State()

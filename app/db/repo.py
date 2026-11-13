@@ -13,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.health import RollingHealth, Sample
 from app.db.models import (
     ApiKey,
+    Bin3dsPassiveRow,
+    BinHitsRow,
     CanaryCard,
     Check,
     Gate,
@@ -250,3 +252,45 @@ async def canary_cards(session: AsyncSession, country: str = "") -> list[CanaryC
     if country:
         stmt = stmt.where(CanaryCard.country == country)
     return list((await session.scalars(stmt)).all())
+
+
+# --- BIN hits (written by the executor, never by a lookup) -----------------
+async def bump_bin_hits(
+    session: AsyncSession, bin_: str, *, approved: bool, user_id: int = 0
+) -> None:
+    key = bin_[:8]
+    row = await session.get(BinHitsRow, key)
+    if row is None:
+        row = BinHitsRow(bin=key, attempts=0, approved=0, users=0)
+        session.add(row)
+    row.attempts += 1
+    if approved:
+        row.approved += 1
+    row.last_hit_at = utcnow()
+    if user_id and row.users == 0:
+        # Section 17.2 has no per-user index; this is a conservative floor.
+        row.users = 1
+    await session.flush()
+
+
+# --- passive 3DS (authoritative: written by real card dispatches) ----------
+async def bump_passive_3ds(
+    session: AsyncSession, bin_: str, *, challenged: bool
+) -> None:
+    """Record one real dispatch against this BIN.
+
+    Only terminal 3DS evidence reaches this function: ``LIVE_3DS`` sets
+    ``challenged``, ``APPROVED`` clears it. Retries and gate faults are not
+    evidence and must never call it.
+    """
+    key = bin_[:8]
+    row = await session.get(Bin3dsPassiveRow, key)
+    if row is None:
+        row = Bin3dsPassiveRow(bin=key, reads=0, challenges=0, last_state="")
+        session.add(row)
+    row.reads += 1
+    if challenged:
+        row.challenges += 1
+    row.last_at = utcnow()
+    row.last_state = "YES" if challenged else "NO"
+    await session.flush()

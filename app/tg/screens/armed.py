@@ -47,7 +47,7 @@ async def dispatch(
     iso2 = ""
     try:
         info = await runtime().bins.resolve(session, card.number)
-        iso2 = info.iso2
+        iso2 = info.iso2 or ""
     except Exception:
         iso2 = ""
     return await runtime().executor.run(
@@ -175,20 +175,14 @@ async def idle_text(
     raw = message.text.strip()
     if raw.isdigit() and 6 <= len(raw) <= 8:
         try:
-            info = await runtime().bins.resolve(session, raw)
+            record = await runtime().bins.resolve(session, raw)
         except Exception:
             await message.answer("⚠️ BIN lookup is unavailable right now.")
             return
-        views = await runtime().executor.views(session)
-        best = [view.label for view in views if view.lane == "auth" and view.enabled][:2]
+        gates = await runtime().executor.views(session)
         await message.answer(
-            render.bin_text(info, best),
-            reply_markup=kb.bin_result(
-                next(
-                    (view.id for view in views if view.lane == "auth" and view.enabled),
-                    None,
-                )
-            ),
+            render.render_bin(record, gates),
+            reply_markup=kb.bin_result(record, gates),
         )
         return
 
@@ -333,7 +327,7 @@ async def kill(callback: CallbackQuery, session: AsyncSession, state: FSMContext
     card = Card.parse(raw)
     iso2 = ""
     try:
-        iso2 = (await runtime().bins.resolve(session, card.number)).iso2
+        iso2 = (await runtime().bins.resolve(session, card.number)).iso2 or ""
     except Exception:
         iso2 = ""
     try:
