@@ -174,6 +174,7 @@ async def inline_bin(query: InlineQuery, runtime) -> None:
             )
             return
 
+    gates = await runtime.db.list_gates()
     await query.answer(
         [
             InlineQueryResultArticle(
@@ -181,7 +182,14 @@ async def inline_bin(query: InlineQuery, runtime) -> None:
                 title=f"BIN {arg}",
                 description=f"{record.brand} {record.level} {record.bank}",
                 input_message_content=InputTextMessageContent(
-                    message_text=card_block(record, free=True),
+                    message_text=card_block(
+                        record,
+                        free=True,
+                        gates=gates,
+                        hits=await runtime.db.get_bin_hits(arg),
+                        challenges=await runtime.db.twofa_challenges(arg),
+                        last_state=await runtime.db.last_twofa_state(arg),
+                    ),
                     parse_mode="HTML",
                 ),
             )

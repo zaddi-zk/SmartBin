@@ -111,6 +111,33 @@ class CheckRunner:
                 user_id, card, record, routing, gates, proxies, amount, purpose, outcome, created
             )
 
+        # Legacy verdict map: translate check runner verdicts into twofa_read
+        # values that the legacy ``bins`` table understands.  Without this map the
+        # passive 3DS branch looks for ``LIVE_3DS`` which legacy never emits, so
+        # ``challenges`` never increments and the field stays ``UNMEASURED``.
+        _3DS_VERDICT_MAP: dict[str, str] = {
+            "3DS-CHALLENGE": "VBV",          # challenge counted
+            "APPROVED":      "NON-VBV",      # no challenge
+            "LIVE-RESTRICTED": "NON-VBV",  # no challenge
+            "INCONCLUSIVE":  "",              # skip
+            "AMBIGUOUS":     "",              # skip
+        }
+
+        if outcome.verdict not in ("INCONCLUSIVE", "AMBIGUOUS"):
+            approved = outcome.verdict in (
+                "APPROVED",
+                "3DS-CHALLENGE",
+                "LIVE-RESTRICTED",
+            )
+            await self.db.bump_bin_hits(card.bin8, approved=approved, user_id=user_id)
+            # Map verdict to twofa_read for legacy bins twofa field
+            read_kind = _3DS_VERDICT_MAP.get(outcome.verdict, "")
+            if read_kind:
+                await self.db.update_bin_fields(
+                    card.bin8,
+                    {"twofa": read_kind, "twofa_conf": 95.0, "twofa_reads": 1, "last_twofa_utc": utcnow_iso()},
+                )
+
         await self.canary.maybe_fire_on_check(gate_name)
         await self.db.stats_bump("checks_total")
         await self.db.stats_bump(f"day:{utc_date()}:checks")

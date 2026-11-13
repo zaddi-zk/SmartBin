@@ -4,6 +4,9 @@ import logging
 from typing import Any
 
 import ui
+from models import Card, utc_date
+from render import card_block, shop_buyer_block
+
 from handlers.common import (
     claim_usage,
     free_watermark,
@@ -12,8 +15,6 @@ from handlers.common import (
     refund_usage,
     should_refund,
 )
-from models import Card, utc_date
-from render import card_block, verdict_block, verdict_header, shop_buyer_block
 
 log = logging.getLogger("smartbin.actions")
 
@@ -53,8 +54,17 @@ async def _bin_result(
 ) -> None:
     await mark_first(runtime.db, "first_bin")
     await runtime.db.stats_bump(f"day:{utc_date()}:bins")
+    bin8 = str(getattr(record, "bin", arg) or arg)[:8]
+    gates = await runtime.db.list_gates()
     await message.answer(
-        card_block(record, free=free_watermark(db_user, runtime.config)),
+        card_block(
+            record,
+            free=free_watermark(db_user, runtime.config),
+            gates=gates,
+            hits=await runtime.db.get_bin_hits(bin8),
+            challenges=await runtime.db.twofa_challenges(bin8),
+            last_state=await runtime.db.last_twofa_state(bin8),
+        ),
         parse_mode="HTML",
         reply_markup=ui.bin_kb(arg),
     )

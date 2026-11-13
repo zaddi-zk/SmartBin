@@ -531,167 +531,69 @@ def shop_buyer_block(
     return "\n".join(lines)
 
 
-# §3.2 BIN CARD — /bin, inline, mini app (monospace copy block)
-def bin_card_block(record: Any, free: bool = False, now: datetime | None = None) -> str:
-    """Render the copy-friendly monospace BIN block used by /bin and inline."""
-    now = _now(now)
-    d = _dict(record)
-    sources = _json(d.get("sources_json"))
-    confs = _json(d.get("field_conf_json"))
-    verified = str(d.get("verified_utc") or "")
+# §3.2 BIN CARD — section 17 port. The old v7.2.1 body is in git history.
+def bin_card_block(
+    record: Any,
+    free: bool = False,
+    now: datetime | None = None,
+    *,
+    gates: list[Any] | None = None,
+    hits: Any = None,
+    challenges: int = 0,
+    last_state: str = "",
+    ttl_days: int = 0,
+) -> str:
+    """Render the section 17 BIN block from a legacy cache row.
 
-    def conf(field: str) -> int:
-        return int(round(_field_conf(confs, field, verified, now)))
+    ``bin_shim`` maps the row to the app model; ``bin_render`` is the verbatim
+    section 17 renderer. No database access happens here, so inline queries and
+    the smoke test can call it with defaults.
+    """
+    try:
+        import bin_render
+        import bin_shim
+    except ImportError:  # pragma: no cover - package import path
+        from smartbin import bin_render, bin_shim
 
-    def value(raw: Any) -> str:
-        text = str(raw or "").strip()
-        return text if text and text.upper() != "UNKNOWN" else "UNKNOWN"
-
-    # Identity
-    bin8 = str(d.get("bin") or "UNKNOWN")
-    brand = value(d.get("brand")).upper()
-    card_type = value(d.get("card_type")).upper()
-    level = value(d.get("level")).upper()
-    bank = value(d.get("bank"))
-    country = value(d.get("country"))
-    iso2 = str(d.get("iso2") or "").upper() or "XX"
-    currency = str(d.get("currency") or "").upper() or "UNKNOWN"
-    phone = str(d.get("phone") or "").strip()
-    site = str(d.get("site") or "").strip()
-    site = site.replace("http://", "").replace("https://", "").rstrip("/")
-
-    length = int(d.get("card_length") or 16)
-    luhn_ok = bool(int(d.get("luhn") or 0))
-    prepaid = bool(int(d.get("prepaid") or 0))
-    commercial = bool(int(d.get("commercial") or 0))
-    atm_debit = bool(int(d.get("atm_debit") or 0))
-    avs = bool(int(d.get("avs") or 0))
-    bin_age = int(d.get("bin_age") or 0)
-    sample_size = int(d.get("sample_size") or 0)
-
-    # Measured 3DS
-    twofa = str(d.get("twofa") or "UNKNOWN").upper().replace("*", "")
-    twofa_reads = int(d.get("twofa_reads") or 0)
-    twofa_conf = int(d.get("twofa_conf") or 0)
-    twofa_last = str(d.get("last_twofa_utc") or "").strip() or "never"
-
-    # Fleet stats
-    fleet_n = int(d.get("fleet_checks_30d") or 0)
-    fleet_approved = int(d.get("fleet_approved") or 0)
-
-    # Freshness
-    days_old: int | None = None
-    fresh_word = "unknown"
-    seen = "never"
-    if verified:
-        try:
-            verified_dt = datetime.fromisoformat(verified.replace("Z", "+00:00"))
-            if verified_dt.tzinfo is None:
-                verified_dt = verified_dt.replace(tzinfo=timezone.utc)
-            days_old = max(0, (now - verified_dt).days)
-            if days_old < 7:
-                fresh_word = "fresh"
-            elif days_old < 30:
-                fresh_word = "recent"
-            elif days_old < 90:
-                fresh_word = "old"
-            else:
-                fresh_word = "stale"
-            seen = f"{verified_dt.strftime('%Y-%m-%d')} · {fresh_word} {days_old}d"
-        except (TypeError, ValueError):
-            seen = "unknown"
-
-    # Provenance
-    source_set = sorted(
-        {
-            str(name)
-            for provenance in sources.values()
-            if isinstance(provenance, dict)
-            for name in provenance
-            if str(name)
-        }
+    current = _now(now)
+    rec = bin_shim.from_legacy(
+        record,
+        challenges=challenges,
+        last_state=last_state,
+        hits=hits,
+        ttl_days=ttl_days,
+        now=current,
     )
-    source_names = ", ".join(source_set) if source_set else "internal database"
-
-    # Flags
-    flags = []
-    if prepaid:
-        flags.append("prepaid")
-    if commercial:
-        flags.append("commercial")
-    if not avs:
-        flags.append("no AVS")
-    if days_old is not None and days_old >= 90:
-        flags.append("stale data")
-    if conf("bank") < 60:
-        flags.append("low conf")
-
-    bank_display = bank
-    if bank != "UNKNOWN" and conf("bank") < 60:
-        bank_display += "  LOW-CONF"
-
-    age_text = f"{bin_age}y" if bin_age > 0 else "unknown"
-
-    brand_glyph = _brand_glyph(brand) or "💳"
-    type_glyph = _type_glyph(card_type) or "🏷️"
-    level_glyph = _level_glyph(level) or "👑"
-    twofa_glyph = GLYPH.get(f"3DS_{twofa}", "⚪")
-    avs_glyph = "✅" if avs else "❌"
-
-    lines = [
-        f"🧬 BIN         {bin8}",
-        f"{brand_glyph} BRAND       {brand}",
-        f"{type_glyph} TYPE        {card_type}",
-        f"{level_glyph} TIER        {level}",
-        f"🏦 BANK        {bank_display}",
-        f"📍 COUNTRY     {iso2}  {country}",
-        f"💱 CURRENCY    {currency}",
-        f"🔢 PAN         {length}  luhn {'OK' if luhn_ok else 'FAIL'}  age {age_text}",
-        f"🪙 PREPAID     {_yes(prepaid)}",
-        f"🏢 COMMERCIAL  {_yes(commercial)}",
-        f"🏧 DEBIT       {_yes(atm_debit)}",
-        f"{avs_glyph} AVS         {'YES  full address' if avs else 'NO'}",
-        f"☎️ PHONE       {phone or 'UNKNOWN'}",
-        f"🌐 SITE        {site or 'UNKNOWN'}",
-        f"📚 SOURCES     {source_names}",
-        f"🕒 VERIFIED    {verified or 'never'}",
-        f"🧪 SAMPLE      {sample_size}",
-    ]
-
-    for field in sorted(sources):
-        provenance = sources.get(field)
-        if not isinstance(provenance, dict):
-            continue
-        for name, raw in provenance.items():
-            lines.append(f"📊 FIELD       {field} {conf(field)}%  {name}={raw}")
-
-    lines.append(
-        f"{twofa_glyph} 3DS         {twofa}  conf {twofa_conf}  reads {twofa_reads}  last {twofa_last}"
-    )
-
-    if fleet_n >= 5:
-        rate = round((fleet_approved / fleet_n) * 100)
-        hit = f"{fleet_approved}/{fleet_n} ({rate}%) · 30d"
-    elif fleet_n > 0:
-        hit = f"cold (n={fleet_n})"
-    else:
-        hit = "no data"
-    lines.append(f"🎯 HIT         {hit}")
-    lines.append(f"🚩 FLAGS       {'none' if not flags else ', '.join(flags)}")
-    lines.append(f"👁️ SEEN        {seen}")
-
+    conf, chip, word = bin_shim.confidence(rec, current)
+    gate_views = bin_shim.gates_from_rows(gates, current)
+    text = bin_render.render_bin(rec, conf, chip, word, gate_views, current)
     if free:
-        lines.append(WATERMARK)
-    lines.append(
-        f"🧾 SMARTBIN v{DISPLAY_VERSION} · cache · {now.strftime('%Y-%m-%d')} · @SmartBlN_Bot"
-    )
-
-    return "<pre>" + html.escape("\n".join(lines)) + "</pre>"
+        text += "\n" + WATERMARK
+    return text
 
 
-def card_block(record: Any, free: bool = False, now: datetime | None = None) -> str:
+def card_block(
+    record: Any,
+    free: bool = False,
+    now: datetime | None = None,
+    *,
+    gates: list[Any] | None = None,
+    hits: Any = None,
+    challenges: int = 0,
+    last_state: str = "",
+    ttl_days: int = 0,
+) -> str:
     """Legacy card_block for backwards compatibility."""
-    return bin_card_block(record, free, now)
+    return bin_card_block(
+        record,
+        free,
+        now,
+        gates=gates,
+        hits=hits,
+        challenges=challenges,
+        last_state=last_state,
+        ttl_days=ttl_days,
+    )
 
 
 def gate_health_line(health: Mapping[str, Any] | None, label: str = "gate-1") -> str:

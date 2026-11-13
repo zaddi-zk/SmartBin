@@ -95,6 +95,14 @@ CREATE TABLE IF NOT EXISTS checks (
 CREATE INDEX IF NOT EXISTS idx_checks_bin ON checks(bin);
 CREATE INDEX IF NOT EXISTS idx_checks_user ON checks(user_id);
 
+CREATE TABLE IF NOT EXISTS bin_hits (
+  bin          TEXT PRIMARY KEY,
+  attempts     INTEGER DEFAULT 0,
+  approved     INTEGER DEFAULT 0,
+  users        INTEGER DEFAULT 0,
+  last_hit_utc TEXT DEFAULT ''
+);
+
 CREATE TABLE IF NOT EXISTS gates (
   name            TEXT PRIMARY KEY,
   kind            TEXT DEFAULT 'stripe',
@@ -237,6 +245,13 @@ PG_SCHEMA = [
     )""",
     "CREATE INDEX IF NOT EXISTS idx_checks_bin ON checks(bin)",
     "CREATE INDEX IF NOT EXISTS idx_checks_user ON checks(user_id)",
+    """CREATE TABLE IF NOT EXISTS bin_hits (
+      bin          TEXT PRIMARY KEY,
+      attempts     INTEGER DEFAULT 0,
+      approved     INTEGER DEFAULT 0,
+      users        INTEGER DEFAULT 0,
+      last_hit_utc TEXT DEFAULT ''
+    )""",
     """CREATE TABLE IF NOT EXISTS gates (
       name            TEXT PRIMARY KEY,
       kind            TEXT DEFAULT 'stripe',
@@ -774,6 +789,55 @@ class DB:
         return await self.fetchall(
             "SELECT * FROM checks WHERE bin=? ORDER BY id DESC LIMIT ?", (bin8, limit)
         )
+
+    async def get_bin_hits(self, bin8: str) -> Any:
+        return await self.fetchone(
+            "SELECT * FROM bin_hits WHERE bin=?", (bin8[:8],)
+        )
+
+    async def bump_bin_hits(self, bin8: str, approved: bool, user_id: int = 0) -> None:
+        """One attempt per dispatch. Only the executor calls this."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        await self.execute(
+            "INSERT INTO bin_hits(bin, attempts, approved, users, last_hit_utc) "
+            "VALUES(?,1,?,?,?) ON CONFLICT(bin) DO UPDATE SET "
+            "attempts=bin_hits.attempts+1, "
+            "approved=bin_hits.approved+excluded.approved, "
+            "users=CASE WHEN bin_hits.users=0 AND excluded.users>0 "
+            "THEN excluded.users ELSE bin_hits.users END, "
+            "last_hit_utc=excluded.last_hit_utc",
+            (bin8[:8], 1 if approved else 0, 1 if user_id else 0, now),
+        )
+
+    async def twofa_challenges(self, bin8: str) -> int:
+        row = await self.fetchone(
+            "SELECT COUNT(*) AS n FROM checks WHERE bin=? AND twofa_read='VBV'",
+            (bin8[:8],),
+        )
+        if row is None:
+            return 0
+        try:
+            return int(row["n"])
+        except (KeyError, TypeError):
+            return int(row[0])
+
+    async def last_twofa_state(self, bin8: str) -> str:
+        row = await self.fetchone(
+            "SELECT twofa_read FROM checks WHERE bin=? AND twofa_read!='' "
+            "ORDER BY id DESC LIMIT 1",
+            (bin8[:8],),
+        )
+        if row is None:
+            return ""
+        try:
+            value = str(row["twofa_read"])
+        except (KeyError, TypeError, IndexError):
+            value = str(row[0])
+        if value == "VBV":
+            return "YES"
+        if value in ("NON-VBV", "NON-VBV*", "LOW-CONF", "PARTIAL"):
+            return "NO"
+        return ""
 
     # ---------- gates ----------
     async def get_gate(self, name: str = "stripe") -> Any:
