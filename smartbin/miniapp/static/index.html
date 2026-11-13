@@ -341,7 +341,7 @@
                 <h2 style="margin-bottom:20px;">⚡ Check Card</h2>
                 <div class="input-group">
                     <label class="input-label">Card Details</label>
-                    <input type="text" class="input-field" id="checkInput" placeholder="number|MM|YY|CVV">
+                    <input type="text" class="input-field" id="checkInput" placeholder="4242424242424242 11/29 716">
                 </div>
                 <div class="input-group">
                     <label class="input-label">Amount (optional)</label>
@@ -355,17 +355,17 @@
                 <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Execute 5 auth attempts to drain/verify card. Uses 5 checks — free daily checks first, then credits.</p>
                 <div class="input-group">
                     <label class="input-label">Card Details</label>
-                    <input type="text" class="input-field" id="killInput" placeholder="number|MM|YY|CVV">
+                    <input type="text" class="input-field" id="killInput" placeholder="4242424242424242 11/29 716">
                 </div>
                 <button class="btn btn-danger" onclick="killCard()">💀 Execute Kill (5 checks)</button>
                 <div id="killResult" style="margin-top:20px;"></div>
             </section>
             <section class="section" id="bulk">
                 <h2 style="margin-bottom:12px;">📦 Bulk Check</h2>
-                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Paste multiple cards (one per line). Format: number|MM|YY|CVV</p>
+                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Paste multiple cards (one per line). Accepts | space / : ; or , as separators.</p>
                 <div class="input-group">
                     <label class="input-label">Cards</label>
-                    <textarea class="input-field" id="bulkInput" placeholder="4242424242424242|12|2030|123"></textarea>
+                    <textarea class="input-field" id="bulkInput" placeholder="4242424242424242 11/29 716"></textarea>
                 </div>
                 <button class="btn btn-primary" onclick="bulkCheck()">📦 Run Bulk Check</button>
                 <div id="bulkResult" style="margin-top:20px;"></div>
@@ -765,11 +765,11 @@
         
         // Check Card
         async function checkCard() {
-            const card = document.getElementById('checkInput').value.trim();
+            const card = normalizeCard(document.getElementById('checkInput').value);
             const amount = document.getElementById('checkAmount').value;
             
-            if (!card || !card.includes('|')) {
-                showToast('❌ Invalid card format. Use: number|MM|YY|CVV');
+            if (!card) {
+                showToast('❌ Invalid card. Try: 4242424242424242 11/29 716');
                 return;
             }
             
@@ -846,10 +846,10 @@
         
         // Kill Card
         async function killCard() {
-            const card = document.getElementById('killInput').value.trim();
+            const card = normalizeCard(document.getElementById('killInput').value);
             
-            if (!card || !card.includes('|')) {
-                showToast('❌ Invalid card format. Use: number|MM|YY|CVV');
+            if (!card) {
+                showToast('❌ Invalid card. Try: 4242424242424242 11/29 716');
                 return;
             }
             
@@ -978,7 +978,7 @@
         // Bulk Check
         async function bulkCheck() {
             const input = document.getElementById('bulkInput').value.trim();
-            const cards = input.split('\n').filter(c => c.trim() && c.includes('|'));
+            const cards = input.split('\n').map(normalizeCard).filter(Boolean);
             
             if (cards.length === 0) {
                 showToast('❌ Please enter cards (one per line)');
@@ -1114,6 +1114,33 @@
         function maskCard(number) {
             if (!number || number.length < 8) return number;
             return number.slice(0, 4) + '••••••' + number.slice(-4);
+        }
+
+        // Accept | / : ; , or space as separators, 2- or 4-digit years,
+        // grouped PANs and an optional trailing zip. Returns
+        // "number|MM|YY|CVV" or null.
+        function normalizeCard(raw) {
+            const cleaned = String(raw || '').replace(/[|/:;,\s]+/g, ' ').trim();
+            if (!cleaned) return null;
+            const parts = cleaned.split(' ');
+            while (
+                parts.length > 4 &&
+                /^\d{1,15}$/.test(parts[0]) &&
+                /^\d{4}$/.test(parts[1])
+            ) {
+                parts[0] = parts[0] + parts[1];
+                parts.splice(1, 1);
+            }
+            if (parts.length < 4) return null;
+            const number = parts[0].replace(/\D/g, '');
+            if (number.length < 13 || number.length > 19) return null;
+            const month = parseInt(parts[1], 10);
+            let year = parseInt(parts[2], 10);
+            const cvv = parts[3];
+            if (!(month >= 1 && month <= 12) || !year) return null;
+            if (year < 100) year += 2000;
+            if (!/^\d{3,4}$/.test(cvv)) return null;
+            return number + '|' + String(month).padStart(2, '0') + '|' + String(year).slice(-2) + '|' + cvv;
         }
         
         // Show Toast

@@ -396,8 +396,8 @@ def create_app(runtime: Any) -> web.Application:
             return web.json_response({"error": "invalid json"}, status=400)
 
         card_raw = str(body.get("card", "")).strip()
-        if not card_raw or "|" not in card_raw:
-            return web.json_response({"error": "invalid card format"}, status=400)
+        if not card_raw:
+            return web.json_response({"error": "card required"}, status=400)
 
         from models import Card
         try:

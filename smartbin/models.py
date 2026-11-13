@@ -54,10 +54,27 @@ class Card:
 
     @classmethod
     def parse(cls, raw: str) -> "Card":
-        cleaned = re.sub(r"[|/,\s]+", " ", raw.strip())
-        parts = cleaned.split()
-        if len(parts) != 4:
-            raise ValueError("card must be number|MM|YY|CVV")
+        """Parse any common card paste format.
+
+        Separators: | / : ; , or whitespace. Accepts 2- or 4-digit years,
+        PANs pasted in 4-digit groups, and an optional trailing zip/fullz.
+        """
+        cleaned = re.sub(r"[|/:;,\s]+", " ", str(raw or "")).strip()
+        if not cleaned:
+            raise ValueError("card is empty")
+        parts = cleaned.split(" ")
+        # Re-join PANs pasted as groups: 4242 4242 4242 4242 11/29 716
+        while (
+            len(parts) > 4
+            and parts[0].isdigit()
+            and parts[1].isdigit()
+            and len(parts[0]) <= 15
+            and len(parts[1]) == 4
+        ):
+            parts[0] = parts[0] + parts[1]
+            parts.pop(1)
+        if len(parts) < 4:
+            raise ValueError("card must be number MM YY CVV")
         number = re.sub(r"\D", "", parts[0])
         if not (13 <= len(number) <= 19):
             raise ValueError("card number length")
