@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-import json
 from typing import Any
 
+import bin_render
+import bin_shim
+import ui
 from aiogram import Router
 from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
-
-import ui
 from core.canaries import percentile
-from handlers.common import claim_usage, parse_bin_arg
 from models import utc_date
 from render import DISPLAY_VERSION, FOOTER_PREFIX, status_block, status_header
 from states import Flow
+
+from handlers.common import claim_usage, parse_bin_arg
 
 router = Router(name="status")
 
@@ -22,14 +23,6 @@ ALLOWED_FIELDS = {
     "currency", "prepaid", "commercial", "card_length", "luhn",
     "avs", "dob", "ssn", "mmn",
 }
-
-
-def _json(raw) -> dict:
-    try:
-        data = json.loads(raw or "{}")
-        return data if isinstance(data, dict) else {}
-    except (TypeError, ValueError):
-        return {}
 
 
 async def _stats(runtime) -> dict:
@@ -138,34 +131,9 @@ async def send_why(message: Message, runtime, bin_arg: str, user: Any = None) ->
             ui.paywall_text(), parse_mode="HTML", reply_markup=ui.paywall_kb()
         )
         return
-    sources = _json(record.sources_json)
-    confs = _json(record.field_conf_json)
-    lines = [
-        f"BIN {record.bin}  {record.brand}  {record.level}",
-        f"SOURCES      {', '.join(sources.keys()) or 'none'}",
-        f"VERIFIED     {record.verified_utc or 'UNKNOWN'}",
-        f"SAMPLE       {record.sample_size}",
-    ]
-    for field, provenance in sources.items():
-        conf = float(confs.get(field, 0.0) or 0.0)
-        pairs = ", ".join(f"{name}={value}" for name, value in provenance.items())
-        lines.append(f"FIELD        {field} {int(round(conf))}%  {pairs}")
-    last = None
-    for row in await runtime.db.checks_for_bin(record.bin, 5):
-        if row["acs_host"]:
-            last = row
-            break
-    if last is not None:
-        lines.append(
-            f"LAST ACS     {last['acs_host']}  gate={last['gate']}  at={last['created_utc']}"
-        )
-    lines.append(
-        f"2FA          {record.twofa}  conf {int(round(record.twofa_conf))}  "
-        f"reads {record.twofa_reads}  last {record.last_twofa_utc or 'never'}"
-    )
-    lines.append(f"{FOOTER_PREFIX} v{DISPLAY_VERSION} · cache · {utc_date()} · @SmartBlN_Bot")
+    rec = await bin_shim.load(runtime.db, record)
     await message.answer(
-        "<pre>" + "\n".join(lines) + "</pre>",
+        bin_render.render_evidence(rec) + "\n\n" + bin_render.render_provenance(rec),
         parse_mode="HTML",
         reply_markup=ui.bin_kb(bin_arg),
     )
