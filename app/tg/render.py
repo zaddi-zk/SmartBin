@@ -92,11 +92,12 @@ def menu_text(
     proxy_label: str,
     sticky_label: str,
     p50_ms: int | None,
+    active_users: int = 0,
 ) -> str:
     return (
         "🧬 <b>VENICE CHECK</b>\n"
         f"<blockquote>⚡ {latency(p50_ms)} p50 · 🛡️ 2-source BIN · "
-        "💸 free on failure</blockquote>\n\n"
+        f"💸 free on failure · 🧠 {active_users} active</blockquote>\n\n"
         f"👤 <code>@{esc(username)}</code> · 💠 <b>{fmt_cr(credits)}</b> cr · "
         f"🎖️ <b>{esc(tier.upper())}</b>\n"
         f"🔌 Proxy: <b>{esc(proxy_label)}</b> · 🏁 Gate: <b>{esc(sticky_label)}</b>\n\n"

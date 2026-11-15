@@ -48,6 +48,7 @@ async def menu_view(
         proxy_label=proxy_label,
         sticky_label=sticky_label,
         p50_ms=p50,
+        active_users=await repo.monthly_active(session),
     )
     return text, kb.main_menu()
 

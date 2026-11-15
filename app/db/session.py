@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -49,6 +50,18 @@ async def session_scope() -> AsyncIterator[AsyncSession]:
             raise
 
 
+def _add_missing_columns(sync_conn: Any) -> None:
+    """create_all never ALTERs; add late columns for DBs created before them."""
+    from sqlalchemy import inspect
+
+    names = {column["name"] for column in inspect(sync_conn).get_columns("users")}
+    if "last_seen_at" not in names:
+        sync_conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN last_seen_at TIMESTAMP"
+        )
+
+
 async def init_db() -> None:
     async with engine().begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.run_sync(_add_missing_columns)

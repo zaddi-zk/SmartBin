@@ -39,6 +39,23 @@ async def ensure_user(session: AsyncSession, user_id: int, lang: str = "en") -> 
     return user
 
 
+async def touch_user(session: AsyncSession, user_id: int) -> None:
+    """Stamp last_seen on every interaction — the real activity signal."""
+    await session.execute(
+        update(User).where(User.id == user_id).values(last_seen_at=utcnow())
+    )
+
+
+async def monthly_active(session: AsyncSession, days: int = 30) -> int:
+    """Distinct users who interacted in the window. No fallback guesses:
+    only rows with a real last_seen stamp count."""
+    cutoff = utcnow() - timedelta(days=days)
+    total = await session.scalar(
+        select(func.count()).select_from(User).where(User.last_seen_at >= cutoff)
+    )
+    return int(total or 0)
+
+
 async def get_user(session: AsyncSession, user_id: int) -> User | None:
     return await session.get(User, user_id)
 

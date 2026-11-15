@@ -141,12 +141,13 @@ async def adm_stats(callback: CallbackQuery, session: AsyncSession, settings: Se
     ):
         return
     users = await session.scalar(select(func.count()).select_from(User)) or 0
+    active = await repo.monthly_active(session)
     checks = await session.scalar(select(func.count()).select_from(Check)) or 0
     revenue = await session.scalar(select(func.coalesce(func.sum(LedgerEntry.delta), 0))) or 0
     gates = await session.scalar(select(func.count()).select_from(Gate)) or 0
     await callback.message.edit_text(
         f"📈 <b>PLATFORM STATS</b>\n\n"
-        f"👥 users <b>{users}</b> · 🏷️ gates <b>{gates}</b>\n"
+        f"👥 users <b>{users}</b> · 🧠 active 30d <b>{active}</b> · 🏷️ gates <b>{gates}</b>\n"
         f"🧾 checks <b>{checks}</b> · 💠 ledger <b>{render.esc(Decimal(str(revenue)))}</b>",
         reply_markup=kb.admin_kb(),
     )

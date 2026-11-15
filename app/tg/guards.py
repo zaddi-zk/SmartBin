@@ -84,6 +84,9 @@ async def load_user(
     if user.banned:
         await banned_screen(event)
         return None
+    # Every real interaction stamps activity — the monthly count is measured,
+    # never estimated.
+    await repo.touch_user(session, tg_user.id)
     if (
         settings is not None
         and bot is not None
