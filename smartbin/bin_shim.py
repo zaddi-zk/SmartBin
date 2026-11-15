@@ -9,6 +9,7 @@ cutover checklist item for ``app/``.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -144,6 +145,90 @@ def hit_stat(row: Mapping[str, Any] | HitStat | None) -> HitStat:
     )
 
 
+# --- display normalization ---------------------------------------------------
+# The BIN card targets ~50 columns. Sources emit long-form ISO names
+# (binlist's US entry is literally "United States of America (the)") and full
+# legal bank names, both of which wrap the COUNTRY/BANK lines. These helpers
+# normalize the *display* values only; raw source values remain in provenance.
+
+_PAREN_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
+
+# CLDR short forms for the long-form names that exceed the budget after the
+# parenthetical strip. Deterministic; everything else falls through intact.
+_COUNTRY_SHORT = {
+    "UNITED STATES OF AMERICA": "United States",
+    "UNITED KINGDOM OF GREAT BRITAIN AND NORTHERN IRELAND": "United Kingdom",
+    "PEOPLE'S REPUBLIC OF CHINA": "China",
+    "ISLAMIC REPUBLIC OF IRAN": "Iran",
+    "LAO PEOPLE'S DEMOCRATIC REPUBLIC": "Laos",
+    "TAIWAN (PROVINCE OF CHINA)": "Taiwan",
+    "TANZANIA, UNITED REPUBLIC OF": "Tanzania",
+    "DEMOCRATIC REPUBLIC OF THE CONGO": "DR Congo",
+}
+
+# Legal suffixes binlist/issuer feeds append to bank names.
+_BANK_LEGAL = (
+    "national association",
+    "national assoc",
+    "incorporated",
+    "corporation",
+    "limited",
+    "cooperative",
+    "savings bank",
+    "n.a.",
+    "n.a",
+    "n a",
+    "s.a.",
+    "s.a",
+    "s.p.a.",
+    "b.v.",
+    "b.v",
+    "n.v.",
+    "n.v",
+    "gmbh",
+    "plc",
+    "ltd",
+    "llc",
+    "inc",
+    "corp",
+    "ag",
+    "sa",
+)
+
+
+def _short_country(name: str) -> str:
+    """Long-form ISO name -> card-width short form. Display only."""
+    value = _PAREN_SUFFIX.sub("", name.strip()).strip()
+    if not value:
+        return name.strip()
+    short = _COUNTRY_SHORT.get(value.upper())
+    return short or value
+
+
+def _short_bank(name: str) -> str:
+    """Full legal bank name -> display short name, word-boundary capped."""
+    value = name.strip()
+    lowered = value.lower()
+    changed = True
+    while changed:
+        changed = False
+        for suffix in _BANK_LEGAL:
+            for sep in (", ", " "):
+                prefix = f"{sep}{suffix}"
+                if lowered.endswith(prefix) and len(lowered) > len(prefix):
+                    value = value[: -len(prefix)].rstrip(" ,")
+                    lowered = value.lower()
+                    changed = True
+                    break
+            if changed:
+                break
+    if len(value) > 28:
+        cut = value[:27].rsplit(" ", 1)[0].rstrip(" ,")
+        value = cut if cut else value[:27]
+        value += "…"
+    return value
+
+
 def _legacy_flags(
     row: Mapping[str, Any], fetched_at: datetime | None, now: datetime | None
 ) -> list[str]:
@@ -204,11 +289,11 @@ def from_legacy(
         prepaid=_bool(row.get("prepaid")),
         commercial=_bool(row.get("commercial")),
         debit=_bool(row.get("atm_debit")) if row.get("atm_debit") is not None else None,
-        bank_short=_clean(row.get("bank")),
+        bank_short=_short_bank(str(row.get("bank") or "")) or None,
         bank_legal=None,
         bank_phone=_clean(row.get("phone")),
         bank_site=site or None,
-        country=_clean(row.get("country")),
+        country=_short_country(str(row.get("country") or "")) or None,
         iso2=str(row.get("iso2") or "").upper() or None,
         currency=_clean(row.get("currency")),
         pan_len=_int(row.get("card_length"), 16) or None,

@@ -219,6 +219,39 @@ def test_provenance_sub_screen_keeps_the_field_rows() -> None:
     assert "Wells Fargo" in text
 
 
+def test_country_long_form_is_shortened_for_the_card() -> None:
+    """binlist's US entry is 'United States of America (the)' — display short."""
+    rec = bin_shim.from_legacy(
+        legacy_row(
+            country="United States of America (the)",
+            sources_json=json.dumps(
+                {"country": {"binlist": "United States of America (the)"}}
+            ),
+        ),
+        ttl_days=0,
+        now=NOW,
+    )
+    assert rec.country == "United States"
+    # Raw value stays in provenance.
+    prov = bin_render.render_provenance(rec, NOW)
+    assert "United States of America (the)" in prov
+
+
+def test_bank_legal_suffixes_are_stripped_for_the_card() -> None:
+    rec = bin_shim.from_legacy(legacy_row(), ttl_days=0, now=NOW)
+    assert rec.bank_short == "Wells Fargo Bank"
+
+
+def test_oversized_bank_name_is_word_capped() -> None:
+    rec = bin_shim.from_legacy(
+        legacy_row(bank="Australia and New Zealand Banking Group Limited"),
+        ttl_days=0,
+        now=NOW,
+    )
+    assert rec.bank_short.endswith("…")
+    assert len(rec.bank_short) <= 29
+
+
 def test_evidence_screen_never_says_unknown() -> None:
     rec = bin_shim.from_legacy(legacy_row(), ttl_days=0, now=NOW)
     text = bin_render.render_evidence(rec, NOW)
