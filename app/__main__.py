@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import os
 
 import httpx
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand
+from aiohttp import web
 
 from app.config import load_settings
-from app.db.seed import seed_gates
+from app.db.seed import seed_gates, seed_stripe_keys
 from app.db.session import init_db, session_scope
 from app.jobs.breaker_tick import breaker_tick
 from app.jobs.canary import canary_tick
@@ -31,6 +33,35 @@ COMMANDS = [
 ]
 
 
+def _health_port() -> int:
+    """Render port-scan port: PORT, then the legacy MINIAPP_PORT, then 8080."""
+    for name in ("PORT", "MINIAPP_PORT"):
+        raw = os.environ.get(name, "").strip()
+        if raw.isdigit():
+            return int(raw)
+    return 8080
+
+
+def _health_app() -> web.Application:
+    app = web.Application()
+
+    async def health(_: web.Request) -> web.Response:
+        return web.json_response({"service": "venice-check", "status": "ok"})
+
+    app.router.add_get("/", health)
+    app.router.add_get("/healthz", health)
+    return app
+
+
+async def _serve_health(port: int) -> None:
+    runner = web.AppRunner(_health_app())
+    await runner.setup()
+    # 0.0.0.0 is required: Render's port scan hits the container's public IP.
+    site = web.TCPSite(runner, "0.0.0.0", port)  # noqa: S104
+    await site.start()
+    await asyncio.Event().wait()  # serve until cancelled
+
+
 async def main() -> None:
     settings = load_settings()
     configure(settings.log_level)
@@ -42,6 +73,7 @@ async def main() -> None:
     await init_db()
     async with session_scope() as session:
         await seed_gates(session)
+        await seed_stripe_keys(session, settings.stripe_key_list())
 
     async with httpx.AsyncClient(timeout=15) as client, session_scope() as session:
         _promoted = await runtime().keys.validate_pending(session, client)
@@ -55,6 +87,7 @@ async def main() -> None:
         asyncio.create_task(health_tick(stop)),
         asyncio.create_task(breaker_tick(stop)),
         asyncio.create_task(canary_tick(stop)),
+        asyncio.create_task(_serve_health(_health_port())),
     ]
     try:
         await dp.start_polling(bot)

@@ -76,6 +76,10 @@ class Settings(BaseSettings):
         default=SecretStr(""),
         validation_alias=AliasChoices("STRIPE_SECRET_KEY", "STRIPE_API_KEY"),
     )
+    # Multi-key pool from the legacy deployment env (comma/newline separated).
+    # Seeded into the ``keys`` table as PENDING at boot; only a livemode read
+    # promotes them to READY (section 10).
+    stripe_keys_raw: str = Field(default="", validation_alias="STRIPE_API_KEYS")
     stripe_api_version: str = "2024-06-20"
     stripe_currency: str = "usd"
     stripe_api_base: str = "https://api.stripe.com"
@@ -126,13 +130,29 @@ class Settings(BaseSettings):
         return value
 
     def secrets(self) -> list[SecretStr]:
-        return [
+        values = [
             self.tg_token,
             self.stripe_secret_key,
             self.adyen_api_key,
             self.authnet_login_id,
             self.authnet_transaction_key,
         ]
+        # The single Stripe key is already in the list via stripe_secret_key;
+        # extend with the multi-key pool only, so the live-only assert sees
+        # every loaded key exactly once.
+        values.extend(
+            SecretStr(part)
+            for part in re.split(r"[,\s]+", self.stripe_keys_raw.strip())
+            if part
+        )
+        return values
+
+    def stripe_key_list(self) -> list[str]:
+        """The whole key pool: STRIPE_API_KEYS plus the single-key env."""
+        raw = " ".join(
+            (self.stripe_keys_raw, self.stripe_secret_key.get_secret_value())
+        )
+        return [part for part in re.split(r"[,\s]+", raw.strip()) if part]
 
     def assert_live_keys(self) -> None:
         """Section 5: refuse sk_test_ at load when LIVE_ONLY is on."""

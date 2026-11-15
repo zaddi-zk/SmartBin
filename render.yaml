@@ -11,12 +11,18 @@ services:
       . .venv/bin/activate
       pip install --upgrade pip
       pip install -r requirements.txt
-    startCommand: cd /opt/render/project/src && . .venv/bin/activate && python bot.py
+    startCommand: cd /opt/render/project/src && . .venv/bin/activate && python -m app
     envVars:
       - key: PYTHON_VERSION
         value: "3.12"
       - key: BOT_TOKEN
         sync: false
+      # Beast platform DB. DB_URL wins over DATABASE_URL (AliasChoices order):
+      # the legacy Supabase tables (users/checks) have different schemas, so
+      # the platform starts on its own SQLite on the disk mount. Postgres
+      # cutover is a later step — never point both stacks at one schema.
+      - key: DB_URL
+        value: sqlite+aiosqlite:////home/render/venice.db
       - key: DB_PATH
         value: /home/render/smartbin.db
       - key: DATABASE_URL

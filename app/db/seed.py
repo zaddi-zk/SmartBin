@@ -12,9 +12,16 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Gate, GateStateRow
+from app.db.models import ApiKey, Gate, GateStateRow
 
 ALL_COUNTRIES = ["*"]
+
+# Gates that consume a Stripe account key. One live key serves all three lanes.
+STRIPE_KEY_GATES: tuple[str, ...] = (
+    "auth_stripe",
+    "charge_stripe",
+    "kill_stripe",
+)
 
 GATE_SEED: tuple[dict[str, object], ...] = (
     {
@@ -176,5 +183,33 @@ async def seed_gates(session: AsyncSession) -> int:
         session.add(Gate(**payload))
         session.add(GateStateRow(gate_id=gate_id))
         added += 1
+    await session.flush()
+    return added
+
+
+async def seed_stripe_keys(session: AsyncSession, secrets: list[str]) -> int:
+    """Insert unseen env keys as PENDING; ``validate_pending`` promotes them.
+
+    Idempotent: a secret already present for a gate is never re-inserted, so
+    restarting the service cannot duplicate keys. Invalid secrets stay PENDING
+    only until validation bounces them to BENCHED — they never reach READY.
+    """
+    added = 0
+    for gate_id in STRIPE_KEY_GATES:
+        if (await session.get(Gate, gate_id)) is None:
+            continue
+        known = set(
+            (
+                await session.scalars(
+                    select(ApiKey.secret).where(ApiKey.gate_id == gate_id)
+                )
+            ).all()
+        )
+        for secret in secrets:
+            if secret in known:
+                continue
+            known.add(secret)
+            session.add(ApiKey(gate_id=gate_id, secret=secret, state="PENDING"))
+            added += 1
     await session.flush()
     return added
