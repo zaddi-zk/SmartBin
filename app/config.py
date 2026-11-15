@@ -124,9 +124,13 @@ class Settings(BaseSettings):
     @classmethod
     def _normalise_db_url(cls, value: str) -> str:
         if value.startswith("postgres://"):
-            return "postgresql+asyncpg://" + value[len("postgres://") :]
-        if value.startswith("postgresql://"):
-            return "postgresql+asyncpg://" + value[len("postgresql://") :]
+            value = "postgresql+asyncpg://" + value[len("postgres://") :]
+        elif value.startswith("postgresql://"):
+            value = "postgresql+asyncpg://" + value[len("postgresql://") :]
+        # Supabase/Render URLs ship `?sslmode=require`; asyncpg's connect()
+        # takes `ssl` and rejects `sslmode`.
+        if value.startswith("postgresql+asyncpg"):
+            value = value.replace("sslmode=", "ssl=")
         return value
 
     def secrets(self) -> list[SecretStr]:
