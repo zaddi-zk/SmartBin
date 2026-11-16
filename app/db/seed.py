@@ -199,6 +199,7 @@ async def seed_stripe_keys(session: AsyncSession, secrets: list[str]) -> int:
 
 ADYEN_KEY_GATES: tuple[str, ...] = ("auth_adyen", "charge_adyen", "kill_adyen")
 AUTHNET_KEY_GATES: tuple[str, ...] = ("auth_authnet", "charge_authnet", "kill_authnet")
+CHECKOUT_KEY_GATES: tuple[str, ...] = ("charge_checkout",)
 
 
 async def seed_adyen_keys(session: AsyncSession, secrets: list[str]) -> int:
@@ -209,6 +210,11 @@ async def seed_adyen_keys(session: AsyncSession, secrets: list[str]) -> int:
 async def seed_authnet_keys(session: AsyncSession, secrets: list[str]) -> int:
     """One Authorize.Net login/transaction-key pair serves all three lanes."""
     return await _seed_keys(session, AUTHNET_KEY_GATES, secrets)
+
+
+async def seed_checkout_keys(session: AsyncSession, secrets: list[str]) -> int:
+    """One Checkout.com secret key serves its charge lane."""
+    return await _seed_keys(session, CHECKOUT_KEY_GATES, secrets)
 
 
 async def _seed_keys(

@@ -111,6 +111,13 @@ class Settings(BaseSettings):
     )
     authnet_api_base: str = "https://api.authorize.net/xml/v1/request.api"
 
+    checkout_secret_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("CHECKOUT_SECRET_KEY", "GATE_CHECKOUT_SECRET_KEY"),
+    )
+    checkout_api_base: str = "https://api.checkout.com"
+    checkout_currency: str = "USD"
+
     # --- BIN ----------------------------------------------------------------
     bin_cache_days: int = 7
     bin_timeout_s: float = 6.0
@@ -148,6 +155,7 @@ class Settings(BaseSettings):
             self.adyen_api_key,
             self.authnet_login_id,
             self.authnet_transaction_key,
+            self.checkout_secret_key,
         ]
         # The single Stripe key is already in the list via stripe_secret_key;
         # extend with the multi-key pool only, so the live-only assert sees
@@ -174,6 +182,10 @@ class Settings(BaseSettings):
         login = self.authnet_login_id.get_secret_value().strip()
         key = self.authnet_transaction_key.get_secret_value().strip()
         return [f"{login}|{key}"] if login and key else []
+
+    def checkout_key_list(self) -> list[str]:
+        value = self.checkout_secret_key.get_secret_value().strip()
+        return [value] if value else []
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
@@ -204,6 +216,10 @@ class Settings(BaseSettings):
             self.authnet_login_id.get_secret_value()
             and self.authnet_transaction_key.get_secret_value()
         )
+
+    @property
+    def checkout_ready(self) -> bool:
+        return bool(self.checkout_secret_key.get_secret_value())
 
 
 @lru_cache(maxsize=1)

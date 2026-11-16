@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from app.db import repo
 from app.db.models import Gate
-from app.db.seed import seed_adyen_keys, seed_authnet_keys, seed_gates
+from app.db.seed import (
+    seed_adyen_keys,
+    seed_authnet_keys,
+    seed_checkout_keys,
+    seed_gates,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -58,3 +63,22 @@ async def test_authnet_key_seeded_once_per_gate(session: AsyncSession) -> None:
     await seed_gates(session)
     assert await seed_authnet_keys(session, ["login|txnkey"]) == 3
     assert await seed_authnet_keys(session, ["login|txnkey"]) == 0
+
+
+async def test_checkout_key_seeded_once_per_gate(session: AsyncSession) -> None:
+    await seed_gates(session)
+    assert await seed_checkout_keys(session, ["sk_live_checkout"]) == 1
+    assert await seed_checkout_keys(session, ["sk_live_checkout"]) == 0
+
+
+async def test_installed_checkout_adapter_enables_its_gate(session: AsyncSession) -> None:
+    await seed_gates(session)
+    gate = await session.get(Gate, "charge_checkout")
+    assert gate is not None and gate.enabled is False
+
+    await repo.enable_installed_gates(session, {"checkout"})
+    await session.flush()
+
+    gate = await session.get(Gate, "charge_checkout")
+    assert gate is not None and gate.enabled is True
+    assert gate.blurb == "Live adapter installed."

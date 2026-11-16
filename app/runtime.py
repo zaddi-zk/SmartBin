@@ -12,6 +12,7 @@ from app.keys.manager import KeyManager
 from app.providers.adyen import AdyenAdapter
 from app.providers.authnet import AuthNetAdapter
 from app.providers.base import AdapterRegistry
+from app.providers.checkout import CheckoutAdapter
 from app.providers.stripe import StripeAdapter
 from app.proxy.pool import ProxyPool
 
@@ -26,6 +27,8 @@ class Runtime:
             self.adapters.register(AdyenAdapter(settings))
         if settings.authnet_ready:
             self.adapters.register(AuthNetAdapter(settings))
+        if settings.checkout_ready:
+            self.adapters.register(CheckoutAdapter(settings))
         self.keys = KeyManager(settings, self.adapters)
         self.proxies = ProxyPool(settings)
         self.executor = CheckExecutor(settings, self.adapters, self.keys, self.proxies)
