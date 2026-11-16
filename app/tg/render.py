@@ -95,7 +95,7 @@ def menu_text(
     active_users: int = 0,
 ) -> str:
     return (
-        "🧬 <b>VENICE CHECK</b>\n"
+        "🧬 <b>Smart Bin</b>\n"
         f"<blockquote>⚡ {latency(p50_ms)} p50 · 🛡️ 2-source BIN · "
         f"💸 free on failure · 🧠 {active_users} active</blockquote>\n\n"
         f"👤 <code>@{esc(username)}</code> · 💠 <b>{fmt_cr(credits)}</b> cr · "
@@ -334,6 +334,18 @@ def _gate_line(gate: GateView) -> str:
     return line
 
 
+def _gate_line_html(gate: GateView) -> str:
+    """The same gate facts, with the parts that matter set in bold."""
+    line = f"<b>{esc(gate.label)}</b> · <b>{fmt_cr(gate.cost_cr)} cr</b>"
+    if gate.handles_3ds:
+        line += " · <b>3DS</b>"
+    return line
+
+
+def _sources_phrase(count: int) -> str:
+    return f"{count} source" if count == 1 else f"{count} sources"
+
+
 def best_gates(record: BinRecord, gates: list[GateView]) -> list[GateView]:
     return route(gates, record.iso2 or "", "auth")[:2]
 
@@ -360,18 +372,36 @@ def record_flags(record: BinRecord) -> str:
 
 def _range_line(record: BinRecord) -> str:
     if record.range_lo and record.range_hi:
-        return f"range {esc(record.range_lo)}–{esc(record.range_hi)}"
+        return (
+            f"range <code>{esc(record.range_lo)}</code>–"
+            f"<code>{esc(record.range_hi)}</code>"
+        )
     parent = record.parent6 or record.bin[:6]
-    return f"parent {esc(parent)}"
+    return f"parent <code>{esc(parent)}</code>"
 
 
 def render_bin(
     record: BinRecord, gates: list[GateView], now: datetime | None = None
 ) -> str:
-    """The main BIN screen. One confidence chip, no per-field rows, one gate block."""
+    """The main BIN screen: identity, verdict, route, then evidence.
+
+    Rich text instead of one ``<code>`` blob. Bold carries the facts that decide
+    something (brand, confidence band, gate, Luhn), ``<code>`` carries values
+    that get compared or copied (BIN, ISO, digits, parent), italics carry
+    caveats. One glyph per attribute, so the eye can use the icons as anchors.
+    """
     current = now or datetime.now(UTC)
     conf, chip, word = confidence.score(record, current)
-    lines = [f"🔍 {pad('BIN')}{esc(record.bin)}        📶 {conf}%  {chip}"]
+    brand = esc((record.brand or "?").upper())
+    tier = esc((record.tier or "?").upper())
+    type_value = esc((record.type or "?").upper())
+
+    lines = [
+        f"🔍 <b>BIN</b> · <code>{esc(record.bin)}</code>",
+        f"💳 <b>{brand}</b> · {ICONS['TIER']} tier <b>{tier}</b>",
+        "",
+        f"📶 <b>{conf}%</b> · {chip} <b>{esc(word.upper())} CONFIDENCE</b>",
+    ]
 
     # No passive 3DS reads means the record is not allowed to look finished,
     # even if the source score is high. The banner always renders then.
@@ -387,12 +417,14 @@ def render_bin(
         elif record.sample < 3:
             reasons.append(f"seen {_times(record.sample)}")
         if record.r3ds.reads == 0:
-            reasons.append("3DS unmeasured")
+            reasons.append("<b>3DS unmeasured</b>")
         elif record.r3ds.reads < confidence.GREEN_3DS_READS:
-            reasons.append(f"3DS measured {_times(record.r3ds.reads)}")
+            reasons.append(f"<b>3DS measured {_times(record.r3ds.reads)}</b>")
         if not reasons:
             reasons.append("limited evidence")
-        lines.append(f"ℹ️  advisory · {' · '.join(reasons)}")
+        lines.append(
+            f"<blockquote>ℹ️ <b>advisory</b> · {' · '.join(reasons)}</blockquote>"
+        )
 
     if record.conflicts:
         noun = "field" if record.conflicts == 1 else "fields"
@@ -404,55 +436,72 @@ def render_bin(
         lines.append(f"⚔️ {record.conflicts} {noun} · {split}")
 
     lines.append("")
-    lines.append(f"🔐 {pad('3DS')}{fmt_3ds(record.r3ds, current)}")
-    if record.r3ds.reads == 0 and record.r3ds.probe_reads > 0:
-        lines.append(f"   <i>{esc(PROBE_TOOLTIP)}</i>")
-    iso2 = (record.iso2 or "?").upper()
-    lines.append(f"📍 {pad('COUNTRY')}{esc(iso2)}  {flag(iso2)}  {esc(record.country or '?')}")
-    avs = "supported  full address" if iso2 in AVS_OK else "not supported"
-    lines.append(f"📮 {pad('AVS')}{avs}  · derived from issuer country")
-    lines.append(f"🛡️ {pad('BEST GATES')}{fmt_gates(record, gates)}")
+    lines.append("🎯 <b>BEST GATE</b>")
+    ranked = best_gates(record, gates)
+    if ranked:
+        for index, gate in enumerate(ranked):
+            bullet = "🛡️" if index == 0 else "•"
+            lines.append(f"{bullet} {_gate_line_html(gate)}")
+    else:
+        lines.append("— <i>no healthy auth gate for this country</i>")
+
     lines.append("")
-    brand = esc((record.brand or "?").upper())
-    tier = esc((record.tier or "?").upper())
-    type_value = esc((record.type or "?").upper())
-    lines.append(f"💳 {pad('BRAND')}{padv(brand)}{ICONS['TIER']} TIER  {tier}")
+    lines.append(f"🔐 <b>3DS</b> · {fmt_3ds(record.r3ds, current)}")
+    if record.r3ds.reads == 0 and record.r3ds.probe_reads > 0:
+        lines.append(f"<i>{esc(PROBE_TOOLTIP)}</i>")
+
+    iso2 = (record.iso2 or "?").upper()
     # TYPE is the parent of PREPAID / COMMERCIAL / DEBIT. If it is unknown the
     # renderer must not assert any of the three, even if a stale row claims one.
     known_type = bool(record.type)
     commercial = record.commercial if known_type else None
     prepaid = record.prepaid if known_type else None
     debit = record.debit if known_type else None
-    lines.append(
-        f"{ICONS['TYPE']} {pad('TYPE')}{padv(type_value)}"
-        f"{ICONS['COMMERCIAL']} COMMERCIAL  {yn(commercial)}"
-    )
-    lines.append(
-        f"{ICONS['PREPAID']} {pad('PREPAID')}{padv(yn(prepaid))}"
-        f"{ICONS['DEBIT']} DEBIT  {yn(debit)}"
-    )
-    lines.append(
-        f"🏛 {pad('BANK')}{esc(record.bank_short or '?')}  ·  "
-        f"☎️ {esc(record.bank_phone or '?')}  ·  🔗 {esc(record.bank_site or '?')}"
-    )
-    lines.append(
-        f"🔢 {pad('PAN')}{record.pan_len or '?'}  LUHN OK  ·  {_range_line(record)}"
-    )
     lines.append("")
+    lines.append(
+        f"{ICONS['TYPE']} type <b>{type_value}</b> · "
+        f"{ICONS['PREPAID']} prepaid <b>{yn(prepaid)}</b>"
+    )
+    lines.append(
+        f"{ICONS['COMMERCIAL']} commercial <b>{yn(commercial)}</b> · "
+        f"{ICONS['DEBIT']} debit <b>{yn(debit)}</b>"
+    )
+    lines.append(f"🏛 <b>{esc(record.bank_short or '?')}</b>")
+    lines.append(
+        f"☎️ <code>{esc(record.bank_phone or '?')}</code> · "
+        f"🔗 <code>{esc(record.bank_site or '?')}</code>"
+    )
+    lines.append(
+        f"📍 {flag(iso2)} <b>{esc(record.country or '?')}</b> · <code>{esc(iso2)}</code>"
+    )
+    avs = "full address" if iso2 in AVS_OK else "not supported"
+    lines.append(f"📮 AVS <b>{avs}</b> · <i>derived from issuer country</i>")
+    lines.append(
+        f"🔢 <code>{record.pan_len or '?'}</code> digits · ✅ <b>LUHN OK</b> · "
+        f"{_range_line(record)}"
+    )
+
     hits = record.hits
-    hit_pct = f"{round(100 * hits.approved / hits.attempts)}%" if hits.attempts else "—"
+    lines.append("")
+    if hits.attempts:
+        hit_pct = round(100 * hits.approved / hits.attempts)
+        lines.append(
+            f"📊 hits <b>{hits.approved} / {hits.attempts}</b> · "
+            f"<b>{hit_pct}%</b> · last <b>{seconds_ago(hits.last_hit_at, current)}</b>"
+        )
+    else:
+        lines.append("📊 hits <b>0 / 0</b> · <i>not hit yet</i>")
+    lines.append(f"🚩 <b>{esc(record_flags(record))}</b>")
     lines.append(
-        f"🎯 {pad('HITS')}{hits.approved} / {hits.attempts}  ·  {hit_pct}  ·  "
-        f"last {seconds_ago(hits.last_hit_at, current)}"
-    )
-    lines.append(f"🚩 {pad('FLAGS')}{esc(record_flags(record))}")
-    lines.append(
-        f"👁️ {pad('SEEN')}{seconds_ago(record.fetched_at, current)}   ·   "
-        f"📚 {record.sources_n} sources   ·   valid {record.ttl_days}d"
+        f"👁️ seen <b>{seconds_ago(record.fetched_at, current)}</b> · "
+        f"📚 <b>{_sources_phrase(record.sources_n)}</b> · "
+        f"⏳ valid <b>{record.ttl_days}d</b>"
     )
     lines.append("")
-    lines.append(f"🏷️ SMARTBIN v{BIN_SCREEN_VERSION} · {utc_stamp(current)}")
-    return "<code>" + "\n".join(lines) + "</code>"
+    lines.append(
+        f"🏷️ SMARTBIN v{BIN_SCREEN_VERSION} · <code>{utc_stamp(current)}</code>"
+    )
+    return "\n".join(lines)
 
 
 def render_evidence(record: BinRecord, now: datetime | None = None) -> str:

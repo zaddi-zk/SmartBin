@@ -300,6 +300,14 @@ _REPLACED = {
     # The gates/share sub-screens were not part of the port.
     "test_icons_are_unique_across_every_bin_screen",
     "test_sub_screens_escape_every_interpolated_value",
+    # The platform card was redesigned (rich text, one ink per role) after the
+    # cutover; the legacy port is frozen and keeps the monospace layout.
+    "test_each_icon_appears_once_on_the_main_screen",
+    "test_gate_block_is_ranked_and_priced",
+    "test_identity_rows_are_bold_and_labelled",
+    "test_main_screen_has_one_confidence_chip_and_no_field_rows",
+    "test_type_unknown_forces_all_three_children",
+    "test_type_unknown_wins_over_stale_children",
 }
 
 

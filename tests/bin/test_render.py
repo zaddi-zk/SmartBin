@@ -20,7 +20,7 @@ def test_one_source_is_advisory_low_and_still_runnable() -> None:
     now = datetime.now(UTC)
     rec = record(sources_n=1, fetched_at=now - timedelta(days=2))
     text = render.render_bin(rec, [gate_view()], now)
-    assert "ℹ️  advisory · only one source" in text
+    assert "<blockquote>ℹ️ <b>advisory</b> · only one source" in text
     assert "3DS unmeasured" in text
     assert "🔴" in text
     assert "UNMEASURED  ▶ measure" in text
@@ -66,10 +66,10 @@ def test_type_unknown_forces_all_three_children() -> None:
         debit=None,
     )
     text = render.render_bin(rec, [gate_view()], now)
-    assert f"{render.ICONS['TYPE']} {render.pad('TYPE')}?" in text
-    assert f"{render.ICONS['COMMERCIAL']} COMMERCIAL  ?" in text
-    assert f"{render.ICONS['PREPAID']} {render.pad('PREPAID')}?" in text
-    assert f"{render.ICONS['DEBIT']} DEBIT  ?" in text
+    assert f"{render.ICONS['TYPE']} type <b>?</b>" in text
+    assert f"{render.ICONS['COMMERCIAL']} commercial <b>?</b>" in text
+    assert f"{render.ICONS['PREPAID']} prepaid <b>?</b>" in text
+    assert f"{render.ICONS['DEBIT']} debit <b>?</b>" in text
 
 
 def test_type_unknown_wins_over_stale_children() -> None:
@@ -82,9 +82,9 @@ def test_type_unknown_wins_over_stale_children() -> None:
         debit=True,
     )
     text = render.render_bin(rec, [gate_view()], now)
-    assert f"{render.ICONS['COMMERCIAL']} COMMERCIAL  ?" in text
-    assert f"{render.ICONS['PREPAID']} {render.pad('PREPAID')}?" in text
-    assert f"{render.ICONS['DEBIT']} DEBIT  ?" in text
+    assert f"{render.ICONS['COMMERCIAL']} commercial <b>?</b>" in text
+    assert f"{render.ICONS['PREPAID']} prepaid <b>?</b>" in text
+    assert f"{render.ICONS['DEBIT']} debit <b>?</b>" in text
 
 
 def test_zero_reads_is_unmeasured_with_a_measure_button() -> None:
@@ -236,7 +236,7 @@ def test_main_screen_has_one_confidence_chip_and_no_field_rows() -> None:
     assert text.count("📶") == 1
     assert "42%" not in text
     assert "🏦 bank" not in text
-    assert "📚 2 sources" in text
+    assert "📚 <b>2 sources</b>" in text
 
 
 def test_avs_always_carries_its_basis() -> None:
@@ -254,14 +254,12 @@ def test_each_icon_appears_once_on_the_main_screen() -> None:
     text = render.render_bin(rec, [gate_view()], now)
     icons = (
         "🔍",
+        "💳",
+        "🎖",
         "📶",
         "ℹ️",
-        "🔐",
-        "📍",
-        "📮",
+        "🎯",
         "🛡️",
-        "💳",
-        render.ICONS["TIER"],
         render.ICONS["TYPE"],
         render.ICONS["COMMERCIAL"],
         render.ICONS["PREPAID"],
@@ -269,11 +267,16 @@ def test_each_icon_appears_once_on_the_main_screen() -> None:
         "🏛",
         "☎️",
         "🔗",
+        "📍",
+        "📮",
         "🔢",
-        "🎯",
+        "✅",
+        "🔐",
+        "📊",
         "🚩",
         "👁️",
         "📚",
+        "⏳",
         "🏷️",
     )
     for icon in icons:
@@ -304,21 +307,15 @@ def test_icons_are_unique_across_every_bin_screen() -> None:
             assert screen.count(icon) <= 1, (icon, screen)
 
 
-def test_right_column_columns_line_up() -> None:
+def test_identity_rows_are_bold_and_labelled() -> None:
     now = datetime.now(UTC)
     rec = record(sources_n=2, fetched_at=now)
     text = render.render_bin(rec, [gate_view()], now)
-    lines = text.splitlines()
-    pairs = [
-        ("💳", render.ICONS["TIER"]),
-        (render.ICONS["TYPE"], render.ICONS["COMMERCIAL"]),
-        (render.ICONS["PREPAID"], render.ICONS["DEBIT"]),
-    ]
-    indexes = []
-    for first, second in pairs:
-        line = next(line for line in lines if first in line and second in line)
-        indexes.append(line.index(second))
-    assert len(set(indexes)) == 1, indexes
+    assert "🧾 type <b>CREDIT</b>" in text
+    assert "🪙 prepaid <b>NO</b>" in text
+    assert "🏢 commercial <b>NO</b>" in text
+    assert "🏧 debit <b>NO</b>" in text
+    assert "✅ <b>LUHN OK</b>" in text
 
 
 def test_identity_values_are_uppercase() -> None:
@@ -384,7 +381,8 @@ def test_gate_block_is_ranked_and_priced() -> None:
         gate_view("auth_open", "Open Auth", state="OPEN", cost="9"),
     ]
     text = render.render_bin(rec, gates, now)
-    assert "Stripe Auth 1cr (3DS) · Adyen Auth 2cr (3DS)" in text
+    assert "🛡️ <b>Stripe Auth</b> · <b>1 cr</b> · <b>3DS</b>" in text
+    assert "• <b>Adyen Auth</b> · <b>2 cr</b> · <b>3DS</b>" in text
     assert "Open Auth" not in text
 
 

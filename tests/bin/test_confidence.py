@@ -31,7 +31,7 @@ def test_two_sources_sample_zero_reads_zero_is_60_yellow_with_banner() -> None:
     assert chip == "🟡"
     assert word == "medium"
     text = render.render_bin(rec, [gate_view()], now)
-    assert "ℹ️  advisory" in text
+    assert "ℹ️ <b>advisory</b>" in text
     assert "3DS unmeasured" in text
 
 

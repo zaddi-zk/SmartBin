@@ -7,10 +7,16 @@ import contextlib
 import os
 
 import httpx
+import structlog
 from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.types import BotCommand
+from aiogram.types import (
+    BotCommand,
+    MenuButtonCommands,
+    MenuButtonWebApp,
+    WebAppInfo,
+)
 from aiohttp import web
 
 from app.config import load_settings
@@ -22,6 +28,9 @@ from app.jobs.health_tick import health_tick
 from app.logging import configure
 from app.runtime import runtime
 from app.tg.app import build_dispatcher
+from app.webapp import build_app, public_base
+
+log = structlog.get_logger("app")
 
 COMMANDS = [
     BotCommand(command="start", description="Main menu"),
@@ -42,19 +51,32 @@ def _health_port() -> int:
     return 8080
 
 
-def _health_app() -> web.Application:
-    app = web.Application()
+async def _set_menu_button(bot: Bot) -> None:
+    """Point the menu button at this service, never at a stale legacy URL.
 
-    async def health(_: web.Request) -> web.Response:
-        return web.json_response({"service": "venice-check", "status": "ok"})
+    The legacy bot left a ``MenuButtonWebApp`` on Telegram's side. If it is not
+    replaced, every user who taps the menu lands on whatever the old URL now
+    answers — which is how the raw health JSON ended up in front of users.
+    """
+    base = public_base()
+    try:
+        if base:
+            await bot.set_chat_menu_button(
+                menu_button=MenuButtonWebApp(
+                    text="Smart Bin", web_app=WebAppInfo(url=base)
+                )
+            )
+        else:
+            # No public https origin known: fall back to the command list
+            # rather than leave a dead WebApp button in place.
+            await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    except Exception as exc:
+        # A menu button is cosmetic; never let it block boot.
+        log.warning("event=set_menu_failed", error=str(exc))
 
-    app.router.add_get("/", health)
-    app.router.add_get("/healthz", health)
-    return app
 
-
-async def _serve_health(port: int) -> None:
-    runner = web.AppRunner(_health_app())
+async def _serve_web(port: int) -> None:
+    runner = web.AppRunner(build_app())
     await runner.setup()
     # 0.0.0.0 is required: Render's port scan hits the container's public IP.
     site = web.TCPSite(runner, "0.0.0.0", port)  # noqa: S104
@@ -81,13 +103,14 @@ async def main() -> None:
     bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = build_dispatcher(settings)
     await bot.set_my_commands(COMMANDS)
+    await _set_menu_button(bot)
 
     stop = asyncio.Event()
     tasks = [
         asyncio.create_task(health_tick(stop)),
         asyncio.create_task(breaker_tick(stop)),
         asyncio.create_task(canary_tick(stop)),
-        asyncio.create_task(_serve_health(_health_port())),
+        asyncio.create_task(_serve_web(_health_port())),
     ]
     try:
         await dp.start_polling(bot)
