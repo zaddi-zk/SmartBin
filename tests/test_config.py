@@ -38,6 +38,9 @@ def test_live_only_accepts_live_keys() -> None:
         cybersource_merchant_id="mid",
         cybersource_key_id="kid",
         cybersource_shared_secret="shared",
+        braintree_merchant_id="mid",
+        braintree_public_key="pub",
+        braintree_private_key="priv",
     )
     settings.assert_live_keys()
 
@@ -74,6 +77,7 @@ def test_readiness_properties_track_secrets() -> None:
     assert empty.authnet_ready is False
     assert empty.checkout_ready is False
     assert empty.cybersource_ready is False
+    assert empty.braintree_ready is False
 
     ready = build(
         stripe_secret_key="sk_live_x",
@@ -85,16 +89,20 @@ def test_readiness_properties_track_secrets() -> None:
         cybersource_merchant_id="mid",
         cybersource_key_id="kid",
         cybersource_shared_secret="shared",
+        braintree_merchant_id="mid",
+        braintree_public_key="pub",
+        braintree_private_key="priv",
     )
     assert ready.stripe_ready is True
     assert ready.adyen_ready is True
     assert ready.authnet_ready is True
     assert ready.checkout_ready is True
     assert ready.cybersource_ready is True
+    assert ready.braintree_ready is True
 
 
 def test_secrets_returns_secret_str_instances() -> None:
     settings = build(stripe_secret_key="sk_live_x")
     secrets = settings.secrets()
-    assert len(secrets) == 9
+    assert len(secrets) == 12
     assert all(isinstance(item, SecretStr) for item in secrets)

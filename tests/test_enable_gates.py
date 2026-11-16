@@ -5,6 +5,7 @@ from app.db.models import Gate
 from app.db.seed import (
     seed_adyen_keys,
     seed_authnet_keys,
+    seed_braintree_keys,
     seed_checkout_keys,
     seed_cybersource_keys,
     seed_gates,
@@ -90,6 +91,29 @@ async def test_installed_cybersource_adapter_enables_all_its_gates(
     await session.flush()
 
     for gate_id in ("auth_cybersource", "charge_cybersource", "kill_cybersource"):
+        gate = await session.get(Gate, gate_id)
+        assert gate is not None and gate.enabled is True
+        assert gate.blurb == "Live adapter installed."
+
+
+async def test_braintree_key_seeded_once_per_gate(session: AsyncSession) -> None:
+    await seed_gates(session)
+    assert await seed_braintree_keys(session, ["mid|pub|priv"]) == 3
+    assert await seed_braintree_keys(session, ["mid|pub|priv"]) == 0
+
+
+async def test_installed_braintree_adapter_enables_all_its_gates(
+    session: AsyncSession,
+) -> None:
+    await seed_gates(session)
+    for gate_id in ("auth_braintree", "charge_braintree", "kill_braintree"):
+        gate = await session.get(Gate, gate_id)
+        assert gate is not None and gate.enabled is False
+
+    await repo.enable_installed_gates(session, {"braintree"})
+    await session.flush()
+
+    for gate_id in ("auth_braintree", "charge_braintree", "kill_braintree"):
         gate = await session.get(Gate, gate_id)
         assert gate is not None and gate.enabled is True
         assert gate.blurb == "Live adapter installed."

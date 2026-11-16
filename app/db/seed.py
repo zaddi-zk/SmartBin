@@ -124,6 +124,7 @@ GATE_SEED: tuple[dict[str, object], ...] = (
             ("checkout", "Checkout"),
             ("square", "Square"),
             ("cybersource", "Cybersource"),
+            ("braintree", "Braintree"),
         )
     ),
     *(
@@ -148,6 +149,7 @@ GATE_SEED: tuple[dict[str, object], ...] = (
             ("adyen", "Adyen"),
             ("authnet", "AuthNet"),
             ("cybersource", "Cybersource"),
+            ("braintree", "Braintree"),
         )
     ),
     *(
@@ -209,6 +211,11 @@ CYBERSOURCE_KEY_GATES: tuple[str, ...] = (
     "charge_cybersource",
     "kill_cybersource",
 )
+BRAINTREE_KEY_GATES: tuple[str, ...] = (
+    "auth_braintree",
+    "charge_braintree",
+    "kill_braintree",
+)
 
 
 async def seed_adyen_keys(session: AsyncSession, secrets: list[str]) -> int:
@@ -229,6 +236,11 @@ async def seed_checkout_keys(session: AsyncSession, secrets: list[str]) -> int:
 async def seed_cybersource_keys(session: AsyncSession, secrets: list[str]) -> int:
     """One merchant/key/shared-secret triple serves all three lanes."""
     return await _seed_keys(session, CYBERSOURCE_KEY_GATES, secrets)
+
+
+async def seed_braintree_keys(session: AsyncSession, secrets: list[str]) -> int:
+    """One merchant/public/private triple serves all three lanes."""
+    return await _seed_keys(session, BRAINTREE_KEY_GATES, secrets)
 
 
 async def _seed_keys(

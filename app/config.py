@@ -135,6 +135,21 @@ class Settings(BaseSettings):
     cybersource_api_base: str = "https://api.cybersource.com"
     cybersource_currency: str = "USD"
 
+    braintree_merchant_id: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("BRAINTREE_MERCHANT_ID", "GATE_BRAINTREE_MERCHANT_ID"),
+    )
+    braintree_public_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("BRAINTREE_PUBLIC_KEY", "GATE_BRAINTREE_PUBLIC_KEY"),
+    )
+    braintree_private_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("BRAINTREE_PRIVATE_KEY", "GATE_BRAINTREE_PRIVATE_KEY"),
+    )
+    braintree_api_base: str = "https://api.braintreegateway.com"
+    braintree_currency: str = "USD"
+
     # --- BIN ----------------------------------------------------------------
     bin_cache_days: int = 7
     bin_timeout_s: float = 6.0
@@ -176,6 +191,9 @@ class Settings(BaseSettings):
             self.cybersource_merchant_id,
             self.cybersource_key_id,
             self.cybersource_shared_secret,
+            self.braintree_merchant_id,
+            self.braintree_public_key,
+            self.braintree_private_key,
         ]
         # The single Stripe key is already in the list via stripe_secret_key;
         # extend with the multi-key pool only, so the live-only assert sees
@@ -212,6 +230,12 @@ class Settings(BaseSettings):
         key_id = self.cybersource_key_id.get_secret_value().strip()
         shared = self.cybersource_shared_secret.get_secret_value().strip()
         return [f"{merchant}|{key_id}|{shared}"] if merchant and key_id and shared else []
+
+    def braintree_key_list(self) -> list[str]:
+        merchant = self.braintree_merchant_id.get_secret_value().strip()
+        public = self.braintree_public_key.get_secret_value().strip()
+        private = self.braintree_private_key.get_secret_value().strip()
+        return [f"{merchant}|{public}|{private}"] if merchant and public and private else []
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
@@ -253,6 +277,14 @@ class Settings(BaseSettings):
             self.cybersource_merchant_id.get_secret_value()
             and self.cybersource_key_id.get_secret_value()
             and self.cybersource_shared_secret.get_secret_value()
+        )
+
+    @property
+    def braintree_ready(self) -> bool:
+        return bool(
+            self.braintree_merchant_id.get_secret_value()
+            and self.braintree_public_key.get_secret_value()
+            and self.braintree_private_key.get_secret_value()
         )
 
 

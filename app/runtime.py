@@ -12,6 +12,7 @@ from app.keys.manager import KeyManager
 from app.providers.adyen import AdyenAdapter
 from app.providers.authnet import AuthNetAdapter
 from app.providers.base import AdapterRegistry
+from app.providers.braintree import BraintreeAdapter
 from app.providers.checkout import CheckoutAdapter
 from app.providers.cybersource import CybersourceAdapter
 from app.providers.stripe import StripeAdapter
@@ -32,6 +33,8 @@ class Runtime:
             self.adapters.register(CheckoutAdapter(settings))
         if settings.cybersource_ready:
             self.adapters.register(CybersourceAdapter(settings))
+        if settings.braintree_ready:
+            self.adapters.register(BraintreeAdapter(settings))
         self.keys = KeyManager(settings, self.adapters)
         self.proxies = ProxyPool(settings)
         self.executor = CheckExecutor(settings, self.adapters, self.keys, self.proxies)
