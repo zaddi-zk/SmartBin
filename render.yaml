@@ -32,6 +32,10 @@ services:
       # it at public. Boot creates it if missing and pins search_path.
       - key: DB_SCHEMA
         value: smartbin
+      # Seed pool imported at boot and re-pulled once a day. Rows stay
+      # untestable until the tick has answered api.ipify.org through them.
+      - key: PROXY_SEED_FILE
+        value: data/proxies.txt
       - key: MINIAPP_PORT
         value: "8080"
       - key: MINIAPP_BASE

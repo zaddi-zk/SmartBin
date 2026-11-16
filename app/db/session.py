@@ -85,11 +85,21 @@ def _add_missing_columns(sync_conn: Any) -> None:
     """create_all never ALTERs; add late columns for DBs created before them."""
     from sqlalchemy import inspect
 
-    names = {column["name"] for column in inspect(sync_conn).get_columns("users")}
-    if "last_seen_at" not in names:
-        sync_conn.exec_driver_sql(
-            "ALTER TABLE users ADD COLUMN last_seen_at TIMESTAMP"
-        )
+    inspector = inspect(sync_conn)
+    tables = set(inspector.get_table_names())
+    if "users" in tables:
+        names = {column["name"] for column in inspector.get_columns("users")}
+        if "last_seen_at" not in names:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN last_seen_at TIMESTAMP"
+            )
+    if "proxies" in tables:
+        names = {column["name"] for column in inspector.get_columns("proxies")}
+        for column in ("ok_count", "fail_count"):
+            if column not in names:
+                sync_conn.exec_driver_sql(
+                    f"ALTER TABLE proxies ADD COLUMN {column} INTEGER NOT NULL DEFAULT 0"
+                )
 
 
 async def init_db() -> None:

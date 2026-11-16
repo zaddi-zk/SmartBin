@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import Float, cast, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
@@ -137,7 +137,10 @@ class ProxyPool:
             row.latency_ms = check.latency_ms
             row.checked_at = now
             if check.alive:
+                row.ok_count = (row.ok_count or 0) + 1
                 alive += 1
+            else:
+                row.fail_count = (row.fail_count or 0) + 1
         await session.flush()
         return alive, len(rows)
 
@@ -155,7 +158,12 @@ class ProxyPool:
         )
         if country:
             stmt = stmt.where(Proxy.country == country)
-        stmt = stmt.order_by(Proxy.latency_ms.asc()).limit(limit)
+        # Stability first: a proxy that answered every recent probe beats a
+        # marginally faster one that keeps dropping. Latency breaks the tie.
+        stability = cast(Proxy.ok_count + 1, Float) / (
+            Proxy.ok_count + Proxy.fail_count + 1
+        )
+        stmt = stmt.order_by(stability.desc(), Proxy.latency_ms.asc()).limit(limit)
         return list((await session.scalars(stmt)).all())
 
     async def bind(self, session: AsyncSession, key_row: ApiKey, key: Key) -> str | None:

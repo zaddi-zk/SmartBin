@@ -164,6 +164,8 @@ class Proxy(Base):
     alive: Mapped[bool] = mapped_column(Boolean, default=True)
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    ok_count: Mapped[int] = mapped_column(Integer, default=0)
+    fail_count: Mapped[int] = mapped_column(Integer, default=0)
     exclusive_user: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
 

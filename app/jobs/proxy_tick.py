@@ -8,6 +8,7 @@ never handed to a card check until they have answered ``api.ipify.org``.
 from __future__ import annotations
 
 import asyncio
+import time
 
 import structlog
 
@@ -31,11 +32,18 @@ async def proxy_tick(
 ) -> None:
     settings = runtime().settings
     interval = interval_s if interval_s is not None else _interval_s(settings.proxy_refresh_hours)
+    # Re-pull the configured seed file/URL once a day so the pool receives
+    # fresh rows without an admin action.
+    next_seed = time.monotonic() + 86_400
 
     while not stop.is_set():
         try:
             async with session_scope() as session:
                 pool = runtime().proxies
+                seeded = 0
+                if time.monotonic() >= next_seed:
+                    seeded = await pool.seed_from_env(session)
+                    next_seed = time.monotonic() + 86_400
                 alive, tested = await pool.refresh(session, limit=batch)
                 assigned = await pool.auto_assign(session)
             log.info(
@@ -43,6 +51,7 @@ async def proxy_tick(
                 alive=alive,
                 tested=tested,
                 assigned=assigned,
+                seeded=seeded,
             )
         except Exception as exc:
             # A background tick must never kill the bot.

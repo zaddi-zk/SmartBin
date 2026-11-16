@@ -13,7 +13,7 @@ from app.config import Settings
 from app.db.models import ApiKey, Proxy, User
 from app.providers.base import Key
 from app.proxy.importer import parse_proxy_line, parse_proxy_text
-from app.proxy.pool import ProxyPool
+from app.proxy.pool import ProxyCheck, ProxyPool
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -103,6 +103,58 @@ async def test_ranked_excludes_untested_dead_stale_and_slow(session: AsyncSessio
 
     rows = await pool().ranked(session)
     assert [row.url for row in rows] == ["http://fast:1"]
+
+
+async def test_ranked_prefers_stability_over_a_slightly_faster_flaky_row(
+    session: AsyncSession,
+) -> None:
+    fresh = now() - timedelta(minutes=5)
+    session.add_all(
+        [
+            Proxy(
+                url="http://flaky:1",
+                alive=True,
+                latency_ms=80,
+                checked_at=fresh,
+                ok_count=1,
+                fail_count=5,
+            ),
+            Proxy(
+                url="http://stable:2",
+                alive=True,
+                latency_ms=120,
+                checked_at=fresh,
+                ok_count=6,
+                fail_count=0,
+            ),
+        ]
+    )
+    await session.flush()
+
+    rows = await pool().ranked(session)
+    assert [row.url for row in rows] == ["http://stable:2", "http://flaky:1"]
+
+
+async def test_refresh_records_success_and_failure_streaks(session: AsyncSession) -> None:
+    good = Proxy(url="http://good:1")
+    bad = Proxy(url="http://bad:2")
+    session.add_all([good, bad])
+    await session.flush()
+
+    async def fake_test_many(urls: list[str], concurrency: int = 20) -> list[ProxyCheck]:
+        return [
+            ProxyCheck(url=url, alive=url.endswith("1"), latency_ms=50) for url in urls
+        ]
+
+    pool_ = pool()
+    pool_.test_many = fake_test_many  # type: ignore[method-assign]
+    alive, tested = await pool_.refresh(session)
+
+    assert (alive, tested) == (1, 2)
+    await session.refresh(good)
+    await session.refresh(bad)
+    assert (good.ok_count, good.fail_count) == (1, 0)
+    assert (bad.ok_count, bad.fail_count) == (0, 1)
 
 
 async def test_ranked_prefers_country_then_falls_back(session: AsyncSession) -> None:
