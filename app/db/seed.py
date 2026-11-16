@@ -198,11 +198,17 @@ async def seed_stripe_keys(session: AsyncSession, secrets: list[str]) -> int:
 
 
 ADYEN_KEY_GATES: tuple[str, ...] = ("auth_adyen", "charge_adyen", "kill_adyen")
+AUTHNET_KEY_GATES: tuple[str, ...] = ("auth_authnet", "charge_authnet", "kill_authnet")
 
 
 async def seed_adyen_keys(session: AsyncSession, secrets: list[str]) -> int:
     """Same lifecycle as Stripe; one Adyen key serves auth/charge/kill."""
     return await _seed_keys(session, ADYEN_KEY_GATES, secrets)
+
+
+async def seed_authnet_keys(session: AsyncSession, secrets: list[str]) -> int:
+    """One Authorize.Net login/transaction-key pair serves all three lanes."""
+    return await _seed_keys(session, AUTHNET_KEY_GATES, secrets)
 
 
 async def _seed_keys(

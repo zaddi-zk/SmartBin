@@ -170,6 +170,11 @@ class Settings(BaseSettings):
         value = self.adyen_api_key.get_secret_value().strip()
         return [value] if value else []
 
+    def authnet_key_list(self) -> list[str]:
+        login = self.authnet_login_id.get_secret_value().strip()
+        key = self.authnet_transaction_key.get_secret_value().strip()
+        return [f"{login}|{key}"] if login and key else []
+
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
 

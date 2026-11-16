@@ -21,7 +21,12 @@ from aiohttp import web
 
 from app.config import load_settings
 from app.db import repo
-from app.db.seed import seed_adyen_keys, seed_gates, seed_stripe_keys
+from app.db.seed import (
+    seed_adyen_keys,
+    seed_authnet_keys,
+    seed_gates,
+    seed_stripe_keys,
+)
 from app.db.session import init_db, session_scope
 from app.jobs.breaker_tick import breaker_tick
 from app.jobs.canary import canary_tick
@@ -99,6 +104,7 @@ async def main() -> None:
         await seed_gates(session)
         await seed_stripe_keys(session, settings.stripe_key_list())
         await seed_adyen_keys(session, settings.adyen_key_list())
+        await seed_authnet_keys(session, settings.authnet_key_list())
         await repo.enable_installed_gates(session, set(runtime().adapters.names))
         seeded_proxies = await runtime().proxies.seed_from_env(session)
     if seeded_proxies:

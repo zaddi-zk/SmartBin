@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.db import repo
 from app.db.models import Gate
-from app.db.seed import seed_adyen_keys, seed_gates
+from app.db.seed import seed_adyen_keys, seed_authnet_keys, seed_gates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -52,3 +52,9 @@ async def test_adyen_key_seeded_once_per_gate(session: AsyncSession) -> None:
     await seed_gates(session)
     assert await seed_adyen_keys(session, ["adyen_live_key"]) == 3
     assert await seed_adyen_keys(session, ["adyen_live_key"]) == 0
+
+
+async def test_authnet_key_seeded_once_per_gate(session: AsyncSession) -> None:
+    await seed_gates(session)
+    assert await seed_authnet_keys(session, ["login|txnkey"]) == 3
+    assert await seed_authnet_keys(session, ["login|txnkey"]) == 0
