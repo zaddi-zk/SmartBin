@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     proxy_max_latency_ms: int = 4000
 
     # --- access -------------------------------------------------------------
+    bot_username: str = "SmartBlN_Bot"
+    support_username: str = "SmartBin_info"
     admin_ids: Annotated[list[int], NoDecode] = Field(
         default_factory=list,
         validation_alias=AliasChoices("ADMIN_IDS", "ADMIN_ID"),

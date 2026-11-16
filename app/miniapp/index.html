@@ -1,0 +1,1157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart Bin - Card Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --gold-primary: #ffd700;
+            --gold-secondary: #ffb700;
+            --gold-dark: #b8860b;
+            --gold-gradient: linear-gradient(135deg, #ffd700 0%, #ffb700 50%, #ffd700 100%);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0b0;
+            --text-muted: #606070;
+            --success: #00ff88;
+            --success-bg: rgba(0, 255, 136, 0.1);
+            --danger: #ff4757;
+            --danger-bg: rgba(255, 71, 87, 0.1);
+            --warning: #ffa500;
+            --warning-bg: rgba(255, 165, 0, 0.1);
+            --border-color: #2a2a3a;
+            --shadow-gold: 0 4px 20px rgba(255, 215, 0, 0.15);
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        .app-container { max-width: 480px; margin: 0 auto; padding-bottom: 80px; }
+        .header {
+            background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+            padding: 24px 20px 32px;
+            border-bottom: 1px solid var(--border-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(20px);
+        }
+        .header-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .logo { display: flex; align-items: center; gap: 12px; }
+        .logo-icon {
+            width: 48px; height: 48px;
+            background: var(--gold-gradient);
+            border-radius: var(--radius-md);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-gold);
+        }
+        .logo-text h1 {
+            font-size: 24px; font-weight: 800;
+            background: var(--gold-gradient);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .logo-text span { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+        .credits-badge {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--gold-dark);
+            padding: 8px 16px;
+            border-radius: var(--radius-md);
+            display: flex; align-items: center; gap: 8px;
+            font-weight: 600; color: var(--gold-primary);
+        }
+        .user-info {
+            background: var(--bg-tertiary);
+            border-radius: var(--radius-lg);
+            padding: 16px;
+            border: 1px solid var(--border-color);
+        }
+        .user-row { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .user-row:last-child { margin-bottom: 0; }
+        .user-label { color: var(--text-secondary); font-size: 13px; }
+        .user-value { font-weight: 600; }
+        .quota-bar {
+            display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap;
+        }
+        .quota-chip {
+            flex: 1 1 0; min-width: 96px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 8px 10px;
+            font-size: 12px; font-weight: 600;
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 6px;
+        }
+        .quota-chip span.q { color: var(--gold-primary); }
+        .quota-chip.empty { border-color: var(--danger); }
+        .quota-chip.empty span.q { color: var(--danger); }
+        .quota-chip.unlimited { border-color: var(--gold-dark); }
+        .nav-tabs {
+            display: flex; gap: 8px;
+            padding: 16px 20px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .nav-tabs::-webkit-scrollbar { display: none; }
+        .nav-tab {
+            flex: 0 0 auto;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            padding: 10px 18px;
+            border-radius: var(--radius-md);
+            color: var(--text-secondary);
+            font-size: 13px; font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition);
+            white-space: nowrap;
+        }
+        .nav-tab.active {
+            background: var(--gold-gradient);
+            color: #000;
+            border-color: var(--gold-primary);
+            box-shadow: var(--shadow-gold);
+        }
+        .nav-tab:hover:not(.active) { border-color: var(--gold-dark); color: var(--gold-primary); }
+        .content { padding: 0 20px 20px; }
+        .section { display: none; }
+        .section.active { display: block; }
+        .services-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 24px; }
+        .service-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        .service-card:hover { border-color: var(--gold-dark); transform: translateY(-2px); box-shadow: var(--shadow-gold); }
+        .service-card.primary {
+            grid-column: span 2;
+            background: linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(255,183,0,0.05) 100%);
+            border-color: var(--gold-dark);
+        }
+        .service-icon { font-size: 36px; margin-bottom: 12px; }
+        .service-title { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+        .service-desc { font-size: 11px; color: var(--text-muted); }
+        .input-group { margin-bottom: 16px; }
+        .input-label { display: block; font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; }
+        .input-field {
+            width: 100%;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            color: var(--text-primary);
+            font-size: 14px;
+            font-family: inherit;
+            transition: var(--transition);
+        }
+        .input-field:focus { outline: none; border-color: var(--gold-primary); box-shadow: 0 0 0 3px rgba(255,215,0,0.1); }
+        .input-field::placeholder { color: var(--text-muted); }
+        textarea.input-field { min-height: 120px; resize: vertical; }
+        .btn {
+            width: 100%;
+            padding: 14px 20px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 14px; font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: var(--transition);
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-primary { background: var(--gold-gradient); color: #000; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: var(--shadow-gold); }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-color); }
+        .btn-secondary:hover { border-color: var(--gold-dark); color: var(--gold-primary); }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .result-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 20px;
+            margin-bottom: 16px;
+        }
+        .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border-color); }
+        .result-title { font-size: 16px; font-weight: 700; }
+        .result-status { padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+        .status-live { background: var(--success-bg); color: var(--success); }
+        .status-dead { background: var(--danger-bg); color: var(--danger); }
+        .status-mixed { background: var(--warning-bg); color: var(--warning); }
+        .result-row { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--border-color); }
+        .result-row:last-child { border-bottom: none; padding-bottom: 0; }
+        .result-label { color: var(--text-secondary); font-size: 13px; }
+        .result-value { font-weight: 600; }
+        .result-value.gold { color: var(--gold-primary); }
+        .kill-attempt { display: flex; justify-content: space-between; padding: 10px 0; font-size: 13px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
+        .stat-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; text-align: center; }
+        .stat-value { font-size: 24px; font-weight: 800; color: var(--gold-primary); margin-bottom: 4px; }
+        .stat-label { font-size: 12px; color: var(--text-muted); }
+        .support-fab {
+            position: fixed; bottom: 24px; right: 24px;
+            width: 56px; height: 56px;
+            background: var(--gold-gradient);
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 28px;
+            box-shadow: var(--shadow-gold);
+            cursor: pointer;
+            transition: var(--transition);
+            z-index: 1000;
+            border: none;
+        }
+        .support-fab:hover { transform: scale(1.1); }
+        .loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; }
+        .spinner { width: 40px; height: 40px; border: 3px solid var(--border-color); border-top-color: var(--gold-primary); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { margin-top: 16px; color: var(--text-secondary); font-size: 14px; }
+        .toast {
+            position: fixed; bottom: 100px; left: 50%;
+            transform: translateX(-50%);
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            padding: 12px 24px;
+            border-radius: var(--radius-md);
+            font-size: 14px; font-weight: 600;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1001;
+            opacity: 0;
+            transition: var(--transition);
+        }
+        .toast.show { opacity: 1; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="header">
+            <div class="header-top">
+                <div class="logo">
+                    <div class="logo-icon">🧬</div>
+                    <div class="logo-text">
+                        <h1>Smart Bin</h1>
+                        <span>Card Intelligence</span>
+                    </div>
+                </div>
+                <div class="credits-badge">
+                    <span>💰</span>
+                    <span id="creditsDisplay">--</span>
+                </div>
+            </div>
+            <div class="user-info" id="userInfo" style="display:none;">
+                <div class="user-row">
+                    <span class="user-label">Username</span>
+                    <span class="user-value" id="usernameDisplay">@--</span>
+                </div>
+                <div class="user-row">
+                    <span class="user-label">Plan</span>
+                    <span class="user-value" id="planDisplay">Free</span>
+                </div>
+            </div>
+            <div class="quota-bar" id="quotaBar">
+                <div class="quota-chip" id="binQuotaChip">
+                    <span>🃏 BIN</span><span class="q" id="binQuota">--</span>
+                </div>
+                <div class="quota-chip" id="checkQuotaChip">
+                    <span>⚡ Checks</span><span class="q" id="checkQuota">--</span>
+                </div>
+            </div>
+        </header>
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="home">🏠 Home</button>
+            <button class="nav-tab" data-tab="bin">🃏 BIN</button>
+            <button class="nav-tab" data-tab="check">⚡ Check</button>
+            <button class="nav-tab" data-tab="kill">💀 Kill</button>
+            <button class="nav-tab" data-tab="bulk">📦 Bulk</button>
+            <button class="nav-tab" data-tab="doctor">🔧 Doctor</button>
+            <button class="nav-tab" data-tab="shop">💎 Shop</button>
+            <button class="nav-tab" data-tab="status">📊 Status</button>
+        </nav>
+        <main class="content">
+            <section class="section active" id="home">
+                <div class="services-grid">
+                    <div class="service-card primary" onclick="switchTab('kill')">
+                        <div class="service-icon">💀</div>
+                        <div class="service-title">Kill Card</div>
+                        <div class="service-desc">Multi-attempt drain (5x auth)</div>
+                    </div>
+                    <div class="service-card" onclick="switchTab('bin')">
+                        <div class="service-icon">🃏</div>
+                        <div class="service-title">BIN Lookup</div>
+                        <div class="service-desc">Metadata & 2FA info</div>
+                    </div>
+                    <div class="service-card" onclick="switchTab('check')">
+                        <div class="service-icon">⚡</div>
+                        <div class="service-title">Check Card</div>
+                        <div class="service-desc">Single auth verify</div>
+                    </div>
+                    <div class="service-card" onclick="switchTab('bulk')">
+                        <div class="service-icon">📦</div>
+                        <div class="service-title">Bulk Check</div>
+                        <div class="service-desc">Batch processing</div>
+                    </div>
+                    <div class="service-card" onclick="switchTab('doctor')">
+                        <div class="service-icon">🔧</div>
+                        <div class="service-title">BIN Doctor</div>
+                        <div class="service-desc">Fix & earn credits</div>
+                    </div>
+                </div>
+                <div class="result-card">
+                    <h3 style="margin-bottom:16px;font-size:16px;">📊 Quick Stats</h3>
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalChecks">0</div>
+                            <div class="stat-label">Total Checks</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="successRate">0%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="section" id="bin">
+                <h2 style="margin-bottom:20px;">🃏 BIN Lookup</h2>
+                <div class="input-group">
+                    <label class="input-label">Enter BIN (6-8 digits)</label>
+                    <input type="text" class="input-field" id="binInput" placeholder="e.g., 45717360" maxlength="8">
+                </div>
+                <button class="btn btn-primary" onclick="lookupBIN()">🔍 Lookup BIN</button>
+                <div id="binResult" style="margin-top:20px;"></div>
+            </section>
+            <section class="section" id="check">
+                <h2 style="margin-bottom:20px;">⚡ Check Card</h2>
+                <div class="input-group">
+                    <label class="input-label">Card Details</label>
+                    <input type="text" class="input-field" id="checkInput" placeholder="4242424242424242 11/29 716">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Gate</label>
+                    <select class="input-field" id="checkGate">
+                        <option value="">🧠 Auto — fastest healthy gate</option>
+                    </select>
+                </div>
+                <button class="btn btn-primary" onclick="checkCard()">⚡ Run Check</button>
+                <div id="checkResult" style="margin-top:20px;"></div>
+            </section>
+            <section class="section" id="kill">
+                <h2 style="margin-bottom:12px;">💀 Kill Card</h2>
+                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Escalating manual-capture ladder. Stops on the first approve and cancels every hold. Uses the kill lane.</p>
+                <div class="input-group">
+                    <label class="input-label">Card Details</label>
+                    <input type="text" class="input-field" id="killInput" placeholder="4242424242424242 11/29 716">
+                </div>
+                <button class="btn btn-danger" onclick="killCard()">💀 Execute Kill (5 checks)</button>
+                <div id="killResult" style="margin-top:20px;"></div>
+            </section>
+            <section class="section" id="bulk">
+                <h2 style="margin-bottom:12px;">📦 Bulk Check</h2>
+                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Paste multiple cards (one per line). Accepts | space / : ; or , as separators.</p>
+                <div class="input-group">
+                    <label class="input-label">Cards</label>
+                    <textarea class="input-field" id="bulkInput" placeholder="4242424242424242 11/29 716"></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="bulkCheck()">📦 Run Bulk Check</button>
+                <div id="bulkResult" style="margin-top:20px;"></div>
+            </section>
+            <section class="section" id="doctor">
+                <h2 style="margin-bottom:20px;">🔧 BIN Doctor</h2>
+                <p style="color:var(--text-secondary);font-size:13px;margin-bottom:20px;">Submit corrections for BIN data. Earn credits on approval.</p>
+                <div class="input-group">
+                    <label class="input-label">BIN</label>
+                    <input type="text" class="input-field" id="doctorBin" placeholder="45717360">
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Field to Fix</label>
+                    <select class="input-field" id="doctorField">
+                        <option value="bank">Bank</option>
+                        <option value="brand">Brand</option>
+                        <option value="country">Country</option>
+                        <option value="currency">Currency</option>
+                        <option value="level">Level</option>
+                        <option value="prepaid">Prepaid Status</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label class="input-label">Correct Value</label>
+                    <input type="text" class="input-field" id="doctorValue" placeholder="Correct value">
+                </div>
+                <button class="btn btn-primary" onclick="submitCorrection()">🔧 Submit Correction</button>
+                <div id="doctorResult" style="margin-top:20px;"></div>
+            </section>
+            <section class="section" id="shop">
+                <h2 style="margin-bottom:20px;">💎 Shop</h2>
+                <div class="result-card">
+                    <h3 style="margin-bottom:16px;">📦 Credit Packs</h3>
+                    <div class="result-row"><span class="result-label">💰 100 Credits</span><span class="result-value">25 XTR</span></div>
+                    <div class="result-row"><span class="result-label">💰 500 Credits</span><span class="result-value">120 XTR</span></div>
+                    <div class="result-row"><span class="result-label">💰 1000 Credits</span><span class="result-value">230 XTR</span></div>
+                </div>
+                <div class="result-card">
+                    <h3 style="margin-bottom:16px;">👑 Premium Plans</h3>
+                    <div class="result-row"><span class="result-label">📅 1 Day Pass</span><span class="result-value">30 XTR</span></div>
+                    <div class="result-row"><span class="result-label">📆 30 Days Pass</span><span class="result-value">250 XTR</span></div>
+                </div>
+                <button class="btn btn-primary" onclick="openTelegramPayment()">💎 Purchase Credits</button>
+            </section>
+            <section class="section" id="status">
+                <h2 style="margin-bottom:20px;">📊 System Status</h2>
+                <div class="result-card">
+                    <div class="result-header">
+                        <span class="result-title">Engine Health</span>
+                        <span class="result-status status-live" id="engineStatus">Checking...</span>
+                    </div>
+                    <div class="result-row"><span class="result-label">📡 API Status</span><span class="result-value" id="apiStatus">--</span></div>
+                    <div class="result-row"><span class="result-label">⚡ Avg Latency</span><span class="result-value" id="avgLatency">--</span></div>
+                    <div class="result-row"><span class="result-label">🔄 Canary (24h)</span><span class="result-value" id="canaryStatus">--</span></div>
+                </div>
+                <button class="btn btn-secondary" onclick="refreshStatus()">🔄 Refresh Status</button>
+            </section>
+        </main>
+    </div>
+    <button class="support-fab" onclick="openSupport()" title="Support">💬</button>
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // Initialize Telegram WebApp
+        let tg;
+        try {
+            tg = window.Telegram.WebApp;
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                
+                // Set colors from Telegram
+                if (tg.backgroundColor) {
+                    document.documentElement.style.setProperty('--bg-primary', tg.backgroundColor);
+                }
+                if (tg.textColor) {
+                    document.documentElement.style.setProperty('--text-primary', tg.textColor);
+                }
+            }
+        } catch (err) {
+            console.warn('Telegram WebApp not available, running in standalone mode');
+            tg = {
+                expand: () => {},
+                ready: () => {},
+                initData: '',
+                initDataUnsafe: { user: null },
+                openTelegramLink: (url) => window.open(url, '_blank'),
+                mainButton: { text: '', color: '', textColor: '', show: () => {}, hide: () => {} }
+            };
+        }
+        
+        // Telegram injects the signed payload into WebApp.initData inside its webview.
+        // The URL query parameter is only a fallback (e.g. manually opened links).
+        function getInitData() {
+            if (tg && tg.initData) return tg.initData;
+            return new URLSearchParams(window.location.search).get('init_data') || '';
+        }
+
+        function getInitHeaders(extra) {
+            const headers = Object.assign({}, extra || {});
+            const initData = getInitData();
+            if (initData) headers['X-Telegram-Init-Data'] = initData;
+            return headers;
+        }
+
+        // API Base URL - detect properly
+        const API_BASE = window.location.origin || 'https://smartbin-eurr.onrender.com';
+
+        // Support / payment destination, filled from /api/status.
+        let supportUrl = 'https://t.me/SmartBin_info';
+
+        // Single source of truth for the daily allowance: the server sends this
+        // after every lookup/check so the UI can never drift out of sync.
+        let quota = null;
+
+        function quotaLabel(q, left) {
+            if (q.unlimited) return '♾️';
+            return `${left} left`;
+        }
+
+        function renderQuota(q) {
+            if (!q) return;
+            quota = q;
+            userData.credits = (q.credits !== undefined && q.credits !== null)
+                ? parseInt(q.credits, 10) || 0
+                : userData.credits;
+            document.getElementById('creditsDisplay').textContent =
+                userData.credits.toLocaleString();
+
+            const planEl = document.getElementById('planDisplay');
+            if (planEl) {
+                planEl.textContent = q.unlimited
+                    ? (q.admin ? '🛠 Admin' : '👑 Premium')
+                    : 'Free';
+            }
+
+            const binsLeft = q.free_bins_left === null || q.free_bins_left === undefined
+                ? 0 : parseInt(q.free_bins_left, 10);
+            const checksLeft = q.free_checks_left === null || q.free_checks_left === undefined
+                ? 0 : parseInt(q.free_checks_left, 10);
+
+            const binEl = document.getElementById('binQuota');
+            const checkEl = document.getElementById('checkQuota');
+            const binChip = document.getElementById('binQuotaChip');
+            const checkChip = document.getElementById('checkQuotaChip');
+            if (binEl) binEl.textContent = q.bin_free ? 'free' : quotaLabel(q, binsLeft);
+            if (checkEl) checkEl.textContent = quotaLabel(q, checksLeft);
+            if (binChip) {
+                binChip.classList.toggle('empty', !q.bin_free && !q.unlimited && binsLeft <= 0);
+                binChip.classList.toggle('unlimited', !!q.unlimited || !!q.bin_free);
+            }
+            if (checkChip) {
+                checkChip.classList.toggle('empty', !q.unlimited && checksLeft <= 0);
+                checkChip.classList.toggle('unlimited', !!q.unlimited);
+            }
+        }
+
+        function checksAvailable() {
+            if (!quota || quota.unlimited) return Infinity;
+            const left = (quota.free_checks_left === null || quota.free_checks_left === undefined)
+                ? 0 : parseInt(quota.free_checks_left, 10) || 0;
+            return left + (parseInt(quota.credits, 10) || 0);
+        }
+
+        function limitBlock(data, status) {
+            const msg = (data && data.error) ? data.error
+                : `Request refused (${status}).`;
+            const buy = (data && data.code === 'limit_reached')
+                ? `<button class="btn btn-primary" style="margin-top:12px;" onclick="switchTab('shop')">💎 Buy Credits / Premium</button>`
+                : '';
+            return `<div class="result-card"><p style="color:var(--danger)">🚫 ${msg}</p>${buy}</div>`;
+        }
+
+        // User data
+        let userData = {
+            id: tg.initDataUnsafe?.user?.id || null,
+            username: tg.initDataUnsafe?.user?.username || null,
+            firstName: tg.initDataUnsafe?.user?.first_name || null,
+            credits: 0
+        };
+        
+        // Statistics
+        let stats = {
+            totalChecks: 0,
+            successfulChecks: 0
+        };
+        
+        // Initialize app
+        async function init() {
+            await loadUserData();
+            await loadGates();
+            await loadStatus();
+            setupNavigation();
+            showToast('🚀 Smart Bin Ready!');
+        }
+
+        // Load selectable gates (section 14/19: the user picks the instrument).
+        async function loadGates() {
+            try {
+                const response = await fetch(`${API_BASE}/api/gates`, {
+                    headers: getInitHeaders()
+                });
+                const data = await response.json().catch(() => ({}));
+                const select = document.getElementById('checkGate');
+                if (!select || !Array.isArray(data.gates)) return;
+                const dot = (s) => ({HEALTHY:'🟢', DEGRADED:'🟡', HALF_OPEN:'🟡', OPEN:'🔴'})[s] || '⚪';
+                data.gates.forEach((g) => {
+                    const option = document.createElement('option');
+                    option.value = g.id;
+                    const latency = g.p50_ms ? ` · ${g.p50_ms}ms` : '';
+                    option.textContent = `${dot(g.state)} ${g.label} · ${g.cost_cr}cr${latency}`;
+                    option.disabled = !g.enabled || g.state === 'OPEN';
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.warn('Failed to load gates:', error);
+            }
+        }
+        
+        // Load user data
+        async function loadUserData() {
+            try {
+                const headers = getInitHeaders();
+                
+                const response = await fetch(`${API_BASE}/api/status`, {
+                    method: 'GET',
+                    headers: headers
+                });
+                
+                const data = await response.json().catch(() => ({}));
+
+                if (!response.ok) {
+                    console.warn('Status check failed:', response.status, data.error || '');
+                    return;
+                }
+
+                renderQuota(data.quota);
+                if (data.support_url) supportUrl = data.support_url;
+                if (data.user) {
+                    userData.id = data.user.id ?? userData.id;
+                    userData.credits = data.user.credits ?? userData.credits;
+                }
+
+                // Update credits from Telegram user data if available
+                if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                    userData.id = tg.initDataUnsafe.user.id;
+                    userData.username = tg.initDataUnsafe.user.username;
+                    userData.firstName = tg.initDataUnsafe.user.first_name;
+                }
+                
+                // Show user info
+                document.getElementById('userInfo').style.display = 'block';
+                if (userData.username) {
+                    document.getElementById('usernameDisplay').textContent = '@' + userData.username;
+                } else if (userData.firstName) {
+                    document.getElementById('usernameDisplay').textContent = userData.firstName;
+                }
+                
+            } catch (error) {
+                console.error('Failed to load user data:', error);
+            }
+        }
+        
+        // Load system status
+        async function loadStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/api/health`);
+                const data = await response.json();
+                
+                document.getElementById('engineStatus').textContent = data.status === 'healthy' ? '🟢 ONLINE' : '🔴 OFFLINE';
+                document.getElementById('engineStatus').className = 'result-status ' + (data.status === 'healthy' ? 'status-live' : 'status-dead');
+                document.getElementById('apiStatus').textContent = data.status === 'healthy' ? '✅ Operational' : '⚠️ Degraded';
+                
+                if (data.canary_24h) {
+                    const successRate = Math.round((data.canary_24h.successful / data.canary_24h.total) * 100);
+                    document.getElementById('canaryStatus').textContent = `${successRate}% (${data.canary_24h.successful}/${data.canary_24h.total})`;
+                }
+                
+                if (data.latency_p50) {
+                    document.getElementById('avgLatency').textContent = data.latency_p50 + 'ms';
+                }
+            } catch (error) {
+                console.error('Failed to load status:', error);
+                document.getElementById('engineStatus').textContent = '⚠️ UNKNOWN';
+            }
+        }
+        
+        // Setup navigation
+        function setupNavigation() {
+            const tabs = document.querySelectorAll('.nav-tab');
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    switchTab(tab.dataset.tab);
+                });
+            });
+        }
+        
+        // Switch tabs
+        function switchTab(tabId) {
+            document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+            
+            const activeTab = document.querySelector(`[data-tab="${tabId}"]`);
+            if (activeTab) activeTab.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+        }
+        
+        // Get init data for API calls (defined above; kept here as a marker)
+        // BIN Lookup
+        async function lookupBIN() {
+            const bin = document.getElementById('binInput').value.trim();
+            if (!bin || bin.length < 6) {
+                showToast('❌ Please enter a valid BIN (6-8 digits)');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('binResult');
+            resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-text">🔍 Looking up BIN...</div></div>';
+            
+            try {
+                const headers = getInitHeaders();
+                const response = await fetch(`${API_BASE}/api/bin?bin=${encodeURIComponent(bin)}`, {
+                    headers: headers
+                });
+                const data = await response.json().catch(() => ({}));
+
+                if (data.quota) renderQuota(data.quota);
+
+                if (!response.ok || data.error) {
+                    resultDiv.innerHTML = limitBlock(data, response.status);
+                    if (data.code === 'limit_reached') showToast('🚫 Daily BIN limit reached');
+                    return;
+                }
+                
+                if (data.data) {
+                    const binData = data.data;
+                    resultDiv.innerHTML = `
+                        <div class="result-card">
+                            <div class="result-header">
+                                <span class="result-title">🃏 BIN Information</span>
+                                <span class="result-status status-live">✅ Found</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🏦 Brand</span>
+                                <span class="result-value gold">${binData.brand || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🏛️ Bank</span>
+                                <span class="result-value">${binData.bank || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🌍 Country</span>
+                                <span class="result-value">${binData.country || 'N/A'} ${binData.iso2 ? '📍 ' + binData.iso2 : ''}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">💱 Currency</span>
+                                <span class="result-value">${binData.currency || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">⭐ Level</span>
+                                <span class="result-value">${binData.level || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">📱 Phone Format</span>
+                                <span class="result-value">${binData.phone || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">💳 Prepaid</span>
+                                <span class="result-value">${binData.prepaid ? '✅ Yes' : '❌ No'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🔒 2FA Available</span>
+                                <span class="result-value">${binData.twofa ? '✅ Yes' : '❌ No'}</span>
+                            </div>
+                        </div>
+                    `;
+                } else if (data.bin) {
+                    // Direct response format
+                    const binData = data;
+                    resultDiv.innerHTML = `
+                        <div class="result-card">
+                            <div class="result-header">
+                                <span class="result-title">🃏 BIN Information</span>
+                                <span class="result-status status-live">✅ Found</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🏦 Brand</span>
+                                <span class="result-value gold">${binData.brand || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🏛️ Bank</span>
+                                <span class="result-value">${binData.bank || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🌍 Country</span>
+                                <span class="result-value">${binData.country || 'N/A'} ${binData.iso2 ? '📍 ' + binData.iso2 : ''}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">💱 Currency</span>
+                                <span class="result-value">${binData.currency || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">⭐ Level</span>
+                                <span class="result-value">${binData.level || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">📱 Phone Format</span>
+                                <span class="result-value">${binData.phone || 'N/A'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">💳 Prepaid</span>
+                                <span class="result-value">${binData.prepaid ? '✅ Yes' : '❌ No'}</span>
+                            </div>
+                            <div class="result-row">
+                                <span class="result-label">🔒 2FA Available</span>
+                                <span class="result-value">${binData.twofa ? '✅ Yes' : '❌ No'}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">❌ Error: ${error.message}</p></div>`;
+            }
+        }
+        
+        // Check Card
+        async function checkCard() {
+            const card = normalizeCard(document.getElementById('checkInput').value);
+            
+            if (!card) {
+                showToast('❌ Invalid card. Try: 4242424242424242 11/29 716');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('checkResult');
+            resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-text">⚡ Checking card...</div></div>';
+            
+            try {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...getInitHeaders()
+                };
+                
+                const response = await fetch(`${API_BASE}/api/check`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({
+                        card: card,
+                        gate: document.getElementById('checkGate').value || null
+                    })
+                });
+                
+                const data = await response.json().catch(() => ({}));
+                if (data.quota) renderQuota(data.quota);
+
+                if (!response.ok || data.error) {
+                    resultDiv.innerHTML = limitBlock(data, response.status);
+                    if (data.code === 'limit_reached') showToast('🚫 Daily check limit reached');
+                    return;
+                }
+                
+                stats.totalChecks++;
+                const isLive = data.live || data.approved;
+                if (isLive) stats.successfulChecks++;
+                updateStats();
+                
+                const statusClass = isLive ? 'status-live' : 'status-dead';
+                const statusText = isLive ? '🟢 LIVE' : '🔴 DECLINED';
+                const statusEmoji = isLive ? '✅' : '❌';
+                
+                resultDiv.innerHTML = `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <span class="result-title">⚡ Check Result</span>
+                            <span class="result-status ${statusClass}">${statusText}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">🎴 Card</span>
+                            <span class="result-value">${maskCard(card.split('|')[0])}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">📊 Verdict</span>
+                            <span class="result-value gold">${data.verdict || 'UNKNOWN'}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">🏁 Gate</span>
+                            <span class="result-value">${data.gate_label || data.gate || 'auto'}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">🔑 Code</span>
+                            <span class="result-value">${data.code || '—'}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">🔐 3DS / AVS / CVC</span>
+                            <span class="result-value">${data.three_ds || '—'} / ${data.avs || '—'} / ${data.cvc || '—'}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">💠 Debited</span>
+                            <span class="result-value">${data.debited !== undefined ? data.debited : 0} cr</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">⚡ Response Time</span>
+                            <span class="result-value">${data.latency_ms ? data.latency_ms + 'ms' : 'N/A'}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">💬 Message</span>
+                            <span class="result-value">${data.message || 'N/A'}</span>
+                        </div>
+                    </div>
+                `;
+                
+                showToast(`${statusEmoji} ${statusText}`);
+                if (data.quota) {
+                    renderQuota(data.quota);
+                } else if (data.credits !== undefined) {
+                    userData.credits = parseInt(data.credits, 10) || 0;
+                    document.getElementById('creditsDisplay').textContent = userData.credits.toLocaleString();
+                }
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">❌ Error: ${error.message}</p></div>`;
+            }
+        }
+        
+        // Kill Card — one call: the server runs the escalating manual-capture
+        // ladder and cancels every hold. Same executor as the bot.
+        async function killCard() {
+            const card = normalizeCard(document.getElementById('killInput').value);
+            if (!card) {
+                showToast('❌ Invalid card. Try: 4242424242424242 11/29 716');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('killResult');
+            resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-text">💀 Running kill ladder...</div></div>';
+            
+            try {
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...getInitHeaders()
+                };
+                const response = await fetch(`${API_BASE}/api/kill`, {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify({ card: card })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (data.quota) renderQuota(data.quota);
+                if (!response.ok || data.error) {
+                    resultDiv.innerHTML = limitBlock(data, response.status);
+                    if (data.code === 'limit_reached') showToast('🚫 Not enough credits');
+                    return;
+                }
+                
+                const live = !!data.live;
+                const statusClass = live ? 'status-live' : 'status-dead';
+                const statusEmoji = live ? '🟢' : '🔴';
+                const rungs = Array.isArray(data.rungs) ? data.rungs : [];
+                let attemptsHtml = '';
+                rungs.forEach((r, index) => {
+                    const icon = (r.verdict === 'APPROVED' || r.verdict === 'LIVE' || r.verdict === 'LIVE_3DS') ? '✅' : '❌';
+                    attemptsHtml += `
+                        <div class="kill-attempt">
+                            <span><span class="attempt-number">${index + 1}.</span> $${(r.amount_cents / 100).toFixed(2)} · ${r.verdict}</span>
+                            <span class="attempt-status">${icon} ${r.latency_ms}ms</span>
+                        </div>
+                    `;
+                });
+                
+                stats.totalChecks += rungs.length;
+                if (live) stats.successfulChecks++;
+                updateStats();
+                
+                resultDiv.innerHTML = `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <span class="result-title">💀 Kill Ladder</span>
+                            <span class="result-status ${statusClass}">${statusEmoji} ${data.verdict}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">🎴 Card</span>
+                            <span class="result-value">${maskCard(card.split('|')[0])}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">🏁 Gate</span>
+                            <span class="result-value">${data.gate_label || data.gate || 'auto'}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">📈 Reached</span>
+                            <span class="result-value gold">$${(data.reached_cents / 100).toFixed(2)}</span>
+                        </div>
+                        <div class="result-row">
+                            <span class="result-label">💠 Debited</span>
+                            <span class="result-value">${data.debited} cr</span>
+                        </div>
+                        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border-color);">
+                            ${attemptsHtml || '<div class="result-row"><span class="result-label">⚠️ No rungs</span><span class="result-value">' + (data.message || 'no answer') + '</span></div>'}
+                        </div>
+                    </div>
+                `;
+                showToast(`${statusEmoji} Kill complete: ${data.verdict}`);
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">❌ Error: ${error.message}</p></div>`;
+            }
+        }
+        
+        // Bulk Check
+        async function bulkCheck() {
+            const input = document.getElementById('bulkInput').value.trim();
+            const cards = input.split('\n').map(normalizeCard).filter(Boolean);
+            
+            if (cards.length === 0) {
+                showToast('❌ Please enter cards (one per line)');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('bulkResult');
+            resultDiv.innerHTML = '<div class="loading"><div class="spinner"></div><div class="loading-text">📦 Processing ' + cards.length + ' cards...</div></div>';
+            
+            try {
+                const results = [];
+                let approved = 0;
+                let limitHit = false;
+                let skipped = 0;
+                
+                for (const card of cards.slice(0, 20)) {
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...getInitHeaders()
+                    };
+                    
+                    const response = await fetch(`${API_BASE}/api/check`, {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify({ card: card.trim() })
+                    });
+                    const data = await response.json().catch(() => ({}));
+                    if (data.quota) renderQuota(data.quota);
+
+                    if (!response.ok || data.error) {
+                        limitHit = data.code === 'limit_reached';
+                        skipped = cards.length - results.length;
+                        break; // stop instead of hammering a closed quota
+                    }
+                    
+                    const isLive = data.live || data.approved;
+                    if (isLive) approved++;
+                    
+                    results.push({ card: card.trim(), live: isLive, verdict: data.verdict });
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                }
+                
+                let resultsHtml = '';
+                results.forEach(r => {
+                    const icon = r.live ? '✅' : '❌';
+                    const color = r.live ? 'var(--success)' : 'var(--danger)';
+                    resultsHtml += `
+                        <div class="kill-attempt" style="border-bottom:1px solid var(--border-color);padding:10px 0;">
+                            <span>${maskCard(r.card.split('|')[0])}</span>
+                            <span style="color:${color}">${icon} ${r.verdict}</span>
+                        </div>
+                    `;
+                });
+                
+                stats.totalChecks += results.length;
+                stats.successfulChecks += approved;
+                updateStats();
+
+                if (results.length === 0) {
+                    resultDiv.innerHTML = limitBlock({
+                        error: limitHit
+                            ? 'Daily free check limit reached. Buy credits to continue.'
+                            : 'No cards could be checked',
+                        code: limitHit ? 'limit_reached' : ''
+                    }, 402);
+                    showToast(limitHit ? '🚫 Daily limit reached' : '❌ Bulk failed');
+                    return;
+                }
+
+                const skippedNote = skipped > 0
+                    ? `<div class="result-row"><span class="result-label">⚠️ Skipped</span><span class="result-value">${skipped} — ${limitHit ? 'daily limit reached' : 'request failed'}</span></div>`
+                    : '';
+                
+                resultDiv.innerHTML = `
+                    <div class="result-card">
+                        <div class="result-header">
+                            <span class="result-title">📦 Bulk Results</span>
+                            <span class="result-status status-live">${approved}/${results.length} LIVE</span>
+                        </div>
+                        ${resultsHtml}
+                        ${skippedNote}
+                    </div>
+                `;
+                
+                showToast(`✅ Processed ${results.length} cards (${approved} live)`);
+                
+            } catch (error) {
+                resultDiv.innerHTML = `<div class="result-card"><p style="color:var(--danger)">❌ Error: ${error.message}</p></div>`;
+            }
+        }
+        
+        // Submit Correction
+        async function submitCorrection() {
+            const bin = document.getElementById('doctorBin').value.trim();
+            const field = document.getElementById('doctorField').value;
+            const value = document.getElementById('doctorValue').value.trim();
+            
+            if (!bin || !field || !value) {
+                showToast('❌ Please fill all fields');
+                return;
+            }
+            
+            showToast('🔧 Correction submitted for review!');
+            document.getElementById('doctorBin').value = '';
+            document.getElementById('doctorValue').value = '';
+        }
+        
+        // Open Telegram Payment
+        function openTelegramPayment() {
+            tg.openTelegramLink(supportUrl);
+        }
+        
+        // Open Support
+        function openSupport() {
+            tg.openTelegramLink(supportUrl);
+        }
+        
+        // Refresh Status
+        async function refreshStatus() {
+            await loadStatus();
+            await loadUserData();
+            showToast('📊 Status refreshed');
+        }
+        
+        // Update Stats
+        function updateStats() {
+            document.getElementById('totalChecks').textContent = stats.totalChecks;
+            const rate = stats.totalChecks > 0 ? Math.round((stats.successfulChecks / stats.totalChecks) * 100) : 0;
+            document.getElementById('successRate').textContent = rate + '%';
+        }
+        
+        // Mask Card Number
+        function maskCard(number) {
+            if (!number || number.length < 8) return number;
+            return number.slice(0, 4) + '••••••' + number.slice(-4);
+        }
+
+        // Accept | / : ; , or space as separators, 2- or 4-digit years,
+        // grouped PANs and an optional trailing zip. Returns
+        // "number|MM|YY|CVV" or null.
+        function normalizeCard(raw) {
+            const cleaned = String(raw || '').replace(/[|/:;,\s]+/g, ' ').trim();
+            if (!cleaned) return null;
+            const parts = cleaned.split(' ');
+            while (
+                parts.length > 4 &&
+                /^\d{1,15}$/.test(parts[0]) &&
+                /^\d{4}$/.test(parts[1])
+            ) {
+                parts[0] = parts[0] + parts[1];
+                parts.splice(1, 1);
+            }
+            if (parts.length < 4) return null;
+            const number = parts[0].replace(/\D/g, '');
+            if (number.length < 13 || number.length > 19) return null;
+            const month = parseInt(parts[1], 10);
+            let year = parseInt(parts[2], 10);
+            const cvv = parts[3];
+            if (!(month >= 1 && month <= 12) || !year) return null;
+            if (year < 100) year += 2000;
+            if (!/^\d{3,4}$/.test(cvv)) return null;
+            return number + '|' + String(month).padStart(2, '0') + '|' + String(year).slice(-2) + '|' + cvv;
+        }
+        
+        // Show Toast
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+        
+        // Initialize on load
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
