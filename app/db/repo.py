@@ -77,6 +77,24 @@ async def get_gate(session: AsyncSession, gate_id: str) -> Gate | None:
     return await session.get(Gate, gate_id)
 
 
+# Gates seeded before their adapter existed carry this blurb. It is the
+# migration marker: once a gate is live, the blurb is replaced, so an admin
+# toggle on a live gate is never overwritten by a restart.
+SEED_PLACEHOLDER_BLURB = "Adapter pending. Gate is visible but disabled."
+
+
+async def enable_installed_gates(session: AsyncSession, processors: set[str]) -> int:
+    """Enable seeded gates whose adapter is now installed."""
+    if not processors:
+        return 0
+    result = await session.execute(
+        update(Gate)
+        .where(Gate.processor.in_(processors), Gate.blurb == SEED_PLACEHOLDER_BLURB)
+        .values(enabled=True, blurb="Live adapter installed.")
+    )
+    return int(getattr(result, "rowcount", 0) or 0)
+
+
 async def gate_states(session: AsyncSession) -> dict[str, GateStateRow]:
     rows = (await session.scalars(select(GateStateRow))).all()
     return {row.gate_id: row for row in rows}

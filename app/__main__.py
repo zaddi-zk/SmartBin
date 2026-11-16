@@ -20,7 +20,8 @@ from aiogram.types import (
 from aiohttp import web
 
 from app.config import load_settings
-from app.db.seed import seed_gates, seed_stripe_keys
+from app.db import repo
+from app.db.seed import seed_adyen_keys, seed_gates, seed_stripe_keys
 from app.db.session import init_db, session_scope
 from app.jobs.breaker_tick import breaker_tick
 from app.jobs.canary import canary_tick
@@ -96,6 +97,8 @@ async def main() -> None:
     async with session_scope() as session:
         await seed_gates(session)
         await seed_stripe_keys(session, settings.stripe_key_list())
+        await seed_adyen_keys(session, settings.adyen_key_list())
+        await repo.enable_installed_gates(session, set(runtime().adapters.names))
 
     async with httpx.AsyncClient(timeout=15) as client, session_scope() as session:
         _promoted = await runtime().keys.validate_pending(session, client)

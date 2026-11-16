@@ -194,8 +194,22 @@ async def seed_stripe_keys(session: AsyncSession, secrets: list[str]) -> int:
     restarting the service cannot duplicate keys. Invalid secrets stay PENDING
     only until validation bounces them to BENCHED — they never reach READY.
     """
+    return await _seed_keys(session, STRIPE_KEY_GATES, secrets)
+
+
+ADYEN_KEY_GATES: tuple[str, ...] = ("auth_adyen", "charge_adyen", "kill_adyen")
+
+
+async def seed_adyen_keys(session: AsyncSession, secrets: list[str]) -> int:
+    """Same lifecycle as Stripe; one Adyen key serves auth/charge/kill."""
+    return await _seed_keys(session, ADYEN_KEY_GATES, secrets)
+
+
+async def _seed_keys(
+    session: AsyncSession, gate_ids: tuple[str, ...], secrets: list[str]
+) -> int:
     added = 0
-    for gate_id in STRIPE_KEY_GATES:
+    for gate_id in gate_ids:
         if (await session.get(Gate, gate_id)) is None:
             continue
         known = set(

@@ -92,6 +92,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("ADYEN_MERCHANT_ACCOUNT", "GATE_ADYEN_MERCHANT_ACCOUNT"),
     )
     adyen_api_base: str = "https://checkout-live.adyen.com/v71"
+    adyen_currency: str = "USD"
+    adyen_capture_delay_hours: int = 7
 
     authnet_login_id: SecretStr = Field(
         default=SecretStr(""),
@@ -157,6 +159,10 @@ class Settings(BaseSettings):
             (self.stripe_keys_raw, self.stripe_secret_key.get_secret_value())
         )
         return [part for part in re.split(r"[,\s]+", raw.strip()) if part]
+
+    def adyen_key_list(self) -> list[str]:
+        value = self.adyen_api_key.get_secret_value().strip()
+        return [value] if value else []
 
     def assert_live_keys(self) -> None:
         """Section 5: refuse sk_test_ at load when LIVE_ONLY is on."""
