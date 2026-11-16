@@ -32,6 +32,13 @@ class Settings(BaseSettings):
         default="sqlite+aiosqlite:///./venice.db",
         validation_alias=AliasChoices("DB_URL", "DATABASE_URL"),
     )
+    # Postgres/Supabase isolation. The legacy stack already owns `users` and
+    # `checks` in the public schema, so the platform must live in its own
+    # schema. Empty on SQLite; required before a Postgres cutover.
+    db_schema: str = Field(
+        default="",
+        validation_alias=AliasChoices("DB_SCHEMA", "SMARTBIN_DB_SCHEMA"),
+    )
     redis_url: str = Field(
         default="redis://localhost:6379/0",
         validation_alias=AliasChoices("REDIS_URL", "REDIS_URL_APP"),
@@ -165,6 +172,14 @@ class Settings(BaseSettings):
                 for part in re.split(r"[,\s]+", value.strip())
                 if part.lstrip("-").isdigit()
             ]
+        return value
+
+    @field_validator("db_schema", mode="after")
+    @classmethod
+    def _validate_db_schema(cls, value: str) -> str:
+        value = value.strip().lower()
+        if value and not re.fullmatch(r"[a-z_][a-z0-9_]*", value):
+            raise ValueError("DB_SCHEMA must be a plain lowercase identifier")
         return value
 
     @field_validator("db_url", mode="after")
