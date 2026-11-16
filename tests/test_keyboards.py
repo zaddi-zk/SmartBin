@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardMarkup
-from app.tg.keyboards import admin_kb, admin_proxy, main_menu
+from app.tg.keyboards import admin_kb, admin_proxy, admin_users, main_menu
 
 
 def _callbacks(markup: InlineKeyboardMarkup) -> list[str]:
@@ -26,3 +26,17 @@ def test_admin_menu_exposes_the_proxy_pool() -> None:
 def test_admin_proxy_screen_has_every_operation() -> None:
     callbacks = _callbacks(admin_proxy())
     assert {"adm:px:imp", "adm:px:refresh", "adm:px:purge", "adm:px:auto"} <= set(callbacks)
+
+
+def test_admin_users_screen_exposes_the_legacy_import() -> None:
+    assert "adm:u:migrate" in _callbacks(admin_users())
+
+
+def test_admin_identity_shows_the_handle_and_the_numeric_id() -> None:
+    from types import SimpleNamespace
+
+    from app.tg.screens.admin import _identity
+
+    text = _identity(SimpleNamespace(username="boss", full_name="Boss", id=42))
+    assert "@boss" in text
+    assert "<code>42</code>" in text
