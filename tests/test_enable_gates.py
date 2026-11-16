@@ -6,6 +6,7 @@ from app.db.seed import (
     seed_adyen_keys,
     seed_authnet_keys,
     seed_checkout_keys,
+    seed_cybersource_keys,
     seed_gates,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +70,29 @@ async def test_checkout_key_seeded_once_per_gate(session: AsyncSession) -> None:
     await seed_gates(session)
     assert await seed_checkout_keys(session, ["sk_live_checkout"]) == 1
     assert await seed_checkout_keys(session, ["sk_live_checkout"]) == 0
+
+
+async def test_cybersource_key_seeded_once_per_gate(session: AsyncSession) -> None:
+    await seed_gates(session)
+    assert await seed_cybersource_keys(session, ["mid|kid|shared"]) == 3
+    assert await seed_cybersource_keys(session, ["mid|kid|shared"]) == 0
+
+
+async def test_installed_cybersource_adapter_enables_all_its_gates(
+    session: AsyncSession,
+) -> None:
+    await seed_gates(session)
+    for gate_id in ("auth_cybersource", "charge_cybersource", "kill_cybersource"):
+        gate = await session.get(Gate, gate_id)
+        assert gate is not None and gate.enabled is False
+
+    await repo.enable_installed_gates(session, {"cybersource"})
+    await session.flush()
+
+    for gate_id in ("auth_cybersource", "charge_cybersource", "kill_cybersource"):
+        gate = await session.get(Gate, gate_id)
+        assert gate is not None and gate.enabled is True
+        assert gate.blurb == "Live adapter installed."
 
 
 async def test_installed_checkout_adapter_enables_its_gate(session: AsyncSession) -> None:

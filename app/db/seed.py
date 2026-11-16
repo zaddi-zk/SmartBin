@@ -144,7 +144,11 @@ GATE_SEED: tuple[dict[str, object], ...] = (
             "enabled": False,
             "sort_hint": 50,
         }
-        for processor, label in (("adyen", "Adyen"), ("authnet", "AuthNet"))
+        for processor, label in (
+            ("adyen", "Adyen"),
+            ("authnet", "AuthNet"),
+            ("cybersource", "Cybersource"),
+        )
     ),
     *(
         {
@@ -200,6 +204,11 @@ async def seed_stripe_keys(session: AsyncSession, secrets: list[str]) -> int:
 ADYEN_KEY_GATES: tuple[str, ...] = ("auth_adyen", "charge_adyen", "kill_adyen")
 AUTHNET_KEY_GATES: tuple[str, ...] = ("auth_authnet", "charge_authnet", "kill_authnet")
 CHECKOUT_KEY_GATES: tuple[str, ...] = ("charge_checkout",)
+CYBERSOURCE_KEY_GATES: tuple[str, ...] = (
+    "auth_cybersource",
+    "charge_cybersource",
+    "kill_cybersource",
+)
 
 
 async def seed_adyen_keys(session: AsyncSession, secrets: list[str]) -> int:
@@ -215,6 +224,11 @@ async def seed_authnet_keys(session: AsyncSession, secrets: list[str]) -> int:
 async def seed_checkout_keys(session: AsyncSession, secrets: list[str]) -> int:
     """One Checkout.com secret key serves its charge lane."""
     return await _seed_keys(session, CHECKOUT_KEY_GATES, secrets)
+
+
+async def seed_cybersource_keys(session: AsyncSession, secrets: list[str]) -> int:
+    """One merchant/key/shared-secret triple serves all three lanes."""
+    return await _seed_keys(session, CYBERSOURCE_KEY_GATES, secrets)
 
 
 async def _seed_keys(

@@ -35,6 +35,9 @@ def test_live_only_accepts_live_keys() -> None:
         authnet_login_id="login",
         authnet_transaction_key="txn",
         checkout_secret_key="sk_sbox_x",
+        cybersource_merchant_id="mid",
+        cybersource_key_id="kid",
+        cybersource_shared_secret="shared",
     )
     settings.assert_live_keys()
 
@@ -70,6 +73,7 @@ def test_readiness_properties_track_secrets() -> None:
     assert empty.adyen_ready is False
     assert empty.authnet_ready is False
     assert empty.checkout_ready is False
+    assert empty.cybersource_ready is False
 
     ready = build(
         stripe_secret_key="sk_live_x",
@@ -78,15 +82,19 @@ def test_readiness_properties_track_secrets() -> None:
         authnet_login_id="login",
         authnet_transaction_key="txn",
         checkout_secret_key="sk_sbox_x",
+        cybersource_merchant_id="mid",
+        cybersource_key_id="kid",
+        cybersource_shared_secret="shared",
     )
     assert ready.stripe_ready is True
     assert ready.adyen_ready is True
     assert ready.authnet_ready is True
     assert ready.checkout_ready is True
+    assert ready.cybersource_ready is True
 
 
 def test_secrets_returns_secret_str_instances() -> None:
     settings = build(stripe_secret_key="sk_live_x")
     secrets = settings.secrets()
-    assert len(secrets) == 6
+    assert len(secrets) == 9
     assert all(isinstance(item, SecretStr) for item in secrets)

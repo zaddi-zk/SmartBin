@@ -118,6 +118,23 @@ class Settings(BaseSettings):
     checkout_api_base: str = "https://api.checkout.com"
     checkout_currency: str = "USD"
 
+    cybersource_merchant_id: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("CYBERSOURCE_MERCHANT_ID", "GATE_CYBERSOURCE_MERCHANT_ID"),
+    )
+    cybersource_key_id: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("CYBERSOURCE_KEY_ID", "GATE_CYBERSOURCE_KEY_ID"),
+    )
+    cybersource_shared_secret: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices(
+            "CYBERSOURCE_SHARED_SECRET", "GATE_CYBERSOURCE_SHARED_SECRET"
+        ),
+    )
+    cybersource_api_base: str = "https://api.cybersource.com"
+    cybersource_currency: str = "USD"
+
     # --- BIN ----------------------------------------------------------------
     bin_cache_days: int = 7
     bin_timeout_s: float = 6.0
@@ -156,6 +173,9 @@ class Settings(BaseSettings):
             self.authnet_login_id,
             self.authnet_transaction_key,
             self.checkout_secret_key,
+            self.cybersource_merchant_id,
+            self.cybersource_key_id,
+            self.cybersource_shared_secret,
         ]
         # The single Stripe key is already in the list via stripe_secret_key;
         # extend with the multi-key pool only, so the live-only assert sees
@@ -186,6 +206,12 @@ class Settings(BaseSettings):
     def checkout_key_list(self) -> list[str]:
         value = self.checkout_secret_key.get_secret_value().strip()
         return [value] if value else []
+
+    def cybersource_key_list(self) -> list[str]:
+        merchant = self.cybersource_merchant_id.get_secret_value().strip()
+        key_id = self.cybersource_key_id.get_secret_value().strip()
+        shared = self.cybersource_shared_secret.get_secret_value().strip()
+        return [f"{merchant}|{key_id}|{shared}"] if merchant and key_id and shared else []
 
     def is_admin(self, user_id: int) -> bool:
         return user_id in self.admin_ids
@@ -220,6 +246,14 @@ class Settings(BaseSettings):
     @property
     def checkout_ready(self) -> bool:
         return bool(self.checkout_secret_key.get_secret_value())
+
+    @property
+    def cybersource_ready(self) -> bool:
+        return bool(
+            self.cybersource_merchant_id.get_secret_value()
+            and self.cybersource_key_id.get_secret_value()
+            and self.cybersource_shared_secret.get_secret_value()
+        )
 
 
 @lru_cache(maxsize=1)
