@@ -315,6 +315,14 @@
                     </div>
                 </div>
                 <div class="result-card">
+                    <h3 style="margin-bottom:16px;font-size:16px;">🎁 Refer &amp; Earn</h3>
+                    <div class="result-row">
+                        <span class="result-label">Your link</span>
+                        <span class="result-value" id="refLink" style="font-size:12px;word-break:break-all;">--</span>
+                    </div>
+                    <button class="btn btn-secondary" onclick="copyRefLink()">📋 Copy referral link</button>
+                </div>
+                <div class="result-card">
                     <h3 style="margin-bottom:16px;font-size:16px;">📊 Quick Stats</h3>
                     <div class="stats-grid">
                         <div class="stat-card">
@@ -359,7 +367,13 @@
                     <label class="input-label">Card Details</label>
                     <input type="text" class="input-field" id="killInput" placeholder="4242424242424242 11/29 716">
                 </div>
-                <button class="btn btn-danger" onclick="killCard()">💀 Execute Kill (5 checks)</button>
+                <div class="input-group">
+                    <label class="input-label">Gate</label>
+                    <select class="input-field" id="killGate">
+                        <option value="">🧠 Auto — fastest healthy kill gate</option>
+                    </select>
+                </div>
+                <button class="btn btn-danger" onclick="killCard()">💀 Execute Kill</button>
                 <div id="killResult" style="margin-top:20px;"></div>
             </section>
             <section class="section" id="bulk">
@@ -559,6 +573,7 @@
         async function init() {
             await loadUserData();
             await loadGates();
+            await loadReferral();
             await loadStatus();
             setupNavigation();
             showToast('🚀 Smart Bin Ready!');
@@ -566,12 +581,17 @@
 
         // Load selectable gates (section 14/19: the user picks the instrument).
         async function loadGates() {
+            await loadLaneGates('auth', 'checkGate');
+            await loadLaneGates('kill', 'killGate');
+        }
+
+        async function loadLaneGates(lane, elementId) {
             try {
-                const response = await fetch(`${API_BASE}/api/gates`, {
+                const response = await fetch(`${API_BASE}/api/gates?lane=${lane}`, {
                     headers: getInitHeaders()
                 });
                 const data = await response.json().catch(() => ({}));
-                const select = document.getElementById('checkGate');
+                const select = document.getElementById(elementId);
                 if (!select || !Array.isArray(data.gates)) return;
                 const dot = (s) => ({HEALTHY:'🟢', DEGRADED:'🟡', HALF_OPEN:'🟡', OPEN:'🔴'})[s] || '⚪';
                 data.gates.forEach((g) => {
@@ -583,8 +603,30 @@
                     select.appendChild(option);
                 });
             } catch (error) {
-                console.warn('Failed to load gates:', error);
+                console.warn(`Failed to load ${lane} gates:`, error);
             }
+        }
+
+        // Referral link, filled from /api/reflink.
+        async function loadReferral() {
+            try {
+                const response = await fetch(`${API_BASE}/api/reflink`, {
+                    headers: getInitHeaders()
+                });
+                const data = await response.json().catch(() => ({}));
+                const target = document.getElementById('refLink');
+                if (target && data.ref_link) target.textContent = data.ref_link;
+            } catch (error) {
+                console.warn('Failed to load referral link:', error);
+            }
+        }
+
+        function copyRefLink() {
+            const text = document.getElementById('refLink').textContent;
+            if (!text || text === '--') return;
+            navigator.clipboard.writeText(text)
+                .then(() => showToast('📋 Referral link copied'))
+                .catch(() => showToast('❌ Copy failed'));
         }
         
         // Load user data
@@ -912,7 +954,10 @@
                 const response = await fetch(`${API_BASE}/api/kill`, {
                     method: 'POST',
                     headers: headers,
-                    body: JSON.stringify({ card: card })
+                    body: JSON.stringify({
+                        card: card,
+                        gate: document.getElementById('killGate').value || null
+                    })
                 });
                 const data = await response.json().catch(() => ({}));
                 if (data.quota) renderQuota(data.quota);
@@ -1080,9 +1125,26 @@
                 return;
             }
             
-            showToast('🔧 Correction submitted for review!');
-            document.getElementById('doctorBin').value = '';
-            document.getElementById('doctorValue').value = '';
+            try {
+                const response = await fetch(`${API_BASE}/api/report`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...getInitHeaders()
+                    },
+                    body: JSON.stringify({ bin: bin, field: field, value: value })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok || data.error) {
+                    showToast(`❌ ${data.error || 'Correction failed'}`);
+                    return;
+                }
+                showToast('🔧 Correction submitted for review!');
+                document.getElementById('doctorBin').value = '';
+                document.getElementById('doctorValue').value = '';
+            } catch (error) {
+                showToast(`❌ ${error.message}`);
+            }
         }
         
         // Open Telegram Payment

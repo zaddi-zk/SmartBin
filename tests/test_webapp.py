@@ -17,6 +17,7 @@ from app.db.models import User
 from app.db.seed import seed_gates
 from app.miniapp.auth import sign_init_data, verify_init_data
 from app.webapp import build_app, page_html, public_base
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 TOKEN = "123456:test-token"
@@ -85,6 +86,9 @@ def test_page_is_the_full_mini_app() -> None:
     assert "openSupport" in html
     assert 'id="checkGate"' in html
     assert "/api/kill" in html
+    assert "/api/report" in html
+    assert 'id="killGate"' in html
+    assert 'id="refLink"' in html
     assert "venice" not in html.lower()
 
 
@@ -179,6 +183,28 @@ async def test_gates_endpoint_lists_auth_lanes(scope: None, session: AsyncSessio
     assert all(gate["lane"] == "auth" for gate in payload["gates"])
 
 
+async def test_gates_endpoint_filters_the_kill_lane(
+    scope: None, session: AsyncSession
+) -> None:
+    await seed_gates(session)
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.get(
+            "/api/gates?lane=kill", headers={"X-Telegram-Init-Data": init_data(7)}
+        )
+        payload = await response.json()
+    assert response.status == 200
+    assert payload["gates"]
+    assert all(gate["lane"] == "kill" for gate in payload["gates"])
+
+
+async def test_gates_endpoint_rejects_an_unknown_lane(scope: None) -> None:
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.get(
+            "/api/gates?lane=nope", headers={"X-Telegram-Init-Data": init_data(7)}
+        )
+    assert response.status == 400
+
+
 async def test_bin_rejects_a_short_number(scope: None) -> None:
     async with TestClient(TestServer(build_app())) as client:
         response = await client.get(
@@ -207,6 +233,60 @@ async def test_kill_requires_auth_and_a_valid_card(scope: None) -> None:
             headers={"X-Telegram-Init-Data": init_data(8)},
         )
     assert response.status == 400
+
+
+async def test_report_stores_a_bin_correction(
+    monkeypatch: pytest.MonkeyPatch, scope: None, session: AsyncSession
+) -> None:
+    from app.bin.resolver import BinResolver
+    from app.db.models import BinFieldReportRow
+
+    session.add(User(id=7, credits=Decimal("0")))
+    await session.flush()
+    fake = SimpleNamespace(settings=settings(), bins=BinResolver(settings()))
+    monkeypatch.setattr("app.miniapp.api.runtime", lambda: fake)
+
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.post(
+            "/api/report",
+            json={"bin": "45717360", "field": "bank", "value": "Test Bank"},
+            headers={"X-Telegram-Init-Data": init_data(7)},
+        )
+    assert response.status == 200
+    row = await session.scalar(select(BinFieldReportRow))
+    assert row is not None
+    assert (row.bin, row.field, row.claimed, row.user_id) == (
+        "45717360",
+        "bank",
+        "Test Bank",
+        7,
+    )
+
+
+async def test_report_rejects_a_bad_bin_or_field(scope: None) -> None:
+    async with TestClient(TestServer(build_app())) as client:
+        headers = {"X-Telegram-Init-Data": init_data(7)}
+        assert (
+            await client.post(
+                "/api/report",
+                json={"bin": "123", "field": "bank", "value": "x"},
+                headers=headers,
+            )
+        ).status == 400
+        assert (
+            await client.post(
+                "/api/report",
+                json={"bin": "45717360", "field": "password", "value": "x"},
+                headers=headers,
+            )
+        ).status == 400
+        assert (
+            await client.post(
+                "/api/report",
+                json={"bin": "45717360", "field": "bank", "value": ""},
+                headers=headers,
+            )
+        ).status == 400
 
 
 async def test_check_rate_limits_per_user(scope: None) -> None:

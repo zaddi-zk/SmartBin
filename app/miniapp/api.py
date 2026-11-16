@@ -159,14 +159,31 @@ async def status(request: web.Request) -> web.Response:
     return web.json_response(payload)
 
 
+REPORTABLE = frozenset(
+    {
+        "bank",
+        "brand",
+        "country",
+        "currency",
+        "level",
+        "phone",
+        "prepaid",
+        "type",
+    }
+)
+
+
 async def gates(request: web.Request) -> web.Response:
     _, error = await _user_id(request)
     if error is not None:
         return error
+    lane = request.query.get("lane", "auth").strip().lower()
+    if lane not in ("auth", "charge", "kill", "hit"):
+        return web.json_response({"error": "unknown lane"}, status=400)
     async with session_scope() as session:
         rows = await repo.list_gates(session)
         states = await repo.gate_states(session)
-        payload = _gate_list([row for row in rows if row.lane == "auth"], states)
+        payload = _gate_list([row for row in rows if row.lane == lane], states)
     return web.json_response({"gates": payload})
 
 
@@ -379,6 +396,40 @@ async def kill(request: web.Request) -> web.Response:
     )
 
 
+async def report(request: web.Request) -> web.Response:
+    """BIN Doctor: store a field correction for review, same as the bot."""
+    uid, error = await _user_id(request)
+    if error is not None:
+        return error
+    if not _rate_ok(uid):
+        return web.json_response(
+            {"error": "Slow down. Try again in a minute.", "code": "rate_limited"},
+            status=429,
+        )
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid json"}, status=400)
+
+    digits = "".join(char for char in str(body.get("bin", "")) if char.isdigit())
+    if len(digits) not in (6, 8):
+        return web.json_response({"error": "BIN must be 6 or 8 digits"}, status=400)
+    field = str(body.get("field", "")).strip().lower()
+    if field not in REPORTABLE:
+        return web.json_response({"error": "unknown field"}, status=400)
+    value = str(body.get("value", "")).strip()
+    if not value:
+        return web.json_response({"error": "value is required"}, status=400)
+
+    async with session_scope() as session:
+        await runtime().bins.report_field(
+            session, digits, field=field, claimed=value[:500], user_id=uid
+        )
+    return web.json_response({"stored": True})
+
+
 async def reflink(request: web.Request) -> web.Response:
     uid, error = await _user_id(request)
     if error is not None:
@@ -396,4 +447,5 @@ def register(app: web.Application) -> None:
     app.router.add_get("/api/bin", bin_lookup)
     app.router.add_post("/api/check", check)
     app.router.add_post("/api/kill", kill)
+    app.router.add_post("/api/report", report)
     app.router.add_get("/api/reflink", reflink)
