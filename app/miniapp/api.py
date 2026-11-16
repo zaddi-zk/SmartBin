@@ -16,12 +16,15 @@ from typing import Any
 
 import structlog
 from aiohttp import web
+from sqlalchemy import func, select
 
 from app.bin.resolver import BinUnavailable
+from app.config import psycopg_url
 from app.core import ledger
 from app.core.parse import Card, CardError
 from app.core.verdicts import Verdict
 from app.db import repo
+from app.db.migrate_legacy import migrate_legacy_users
 from app.db.models import Gate, GateStateRow, User
 from app.db.session import session_scope
 from app.miniapp.auth import verify_init_data
@@ -51,13 +54,14 @@ async def _user_id(request: web.Request) -> tuple[int, web.Response | None]:
     if payload is None:
         return 0, web.json_response({"error": "unauthorized"}, status=401)
     uid = int(payload["id"])
+    username = str(payload.get("username") or "")
     async with session_scope() as session:
-        user = await repo.ensure_user(session, uid)
+        user = await repo.ensure_user(session, uid, username=username)
         if user.banned:
             return 0, web.json_response(
                 {"error": "Account restricted. Contact support."}, status=403
             )
-        await repo.touch_user(session, uid)
+        await repo.touch_user(session, uid, username)
     return uid, None
 
 
@@ -439,6 +443,52 @@ async def reflink(request: web.Request) -> web.Response:
     return web.json_response({"ref_link": link})
 
 
+async def admin_migrate(request: web.Request) -> web.Response:
+    """Run the legacy import in-process. Admins only.
+
+    The source normally comes from ``LEGACY_DATABASE_URL``. A one-time POST
+    body may carry it instead so an operator can bootstrap a deployment that
+    has no env var yet; the value is used and never echoed or logged.
+    """
+    uid, error = await _user_id(request)
+    if error is not None:
+        return error
+    settings = runtime().settings
+    if not settings.is_admin(uid):
+        return web.json_response({"error": "admins only"}, status=403)
+
+    source = ""
+    if request.can_read_body:
+        try:
+            body = await request.json()
+        except json.JSONDecodeError:
+            body = {}
+        if isinstance(body, dict):
+            source = str(body.get("source") or "").strip()
+    source = source or settings.legacy_source_url
+    if not source:
+        return web.json_response(
+            {"error": "no legacy source configured"}, status=400
+        )
+
+    async with session_scope() as session:
+        report = await migrate_legacy_users(session, psycopg_url(source))
+        total = await session.scalar(select(func.count()).select_from(User)) or 0
+        monthly = await repo.monthly_active(session)
+
+    return web.json_response(
+        {
+            "read": report.read,
+            "created": report.created,
+            "updated": report.updated,
+            "error": report.error,
+            "total": int(total),
+            "monthly": monthly,
+        },
+        status=200 if report.ok else 502,
+    )
+
+
 def register(app: web.Application) -> None:
     app.router.add_get("/api/health", health)
     app.router.add_get("/api/status", status)
@@ -449,3 +499,4 @@ def register(app: web.Application) -> None:
     app.router.add_post("/api/kill", kill)
     app.router.add_post("/api/report", report)
     app.router.add_get("/api/reflink", reflink)
+    app.router.add_post("/api/admin/migrate", admin_migrate)

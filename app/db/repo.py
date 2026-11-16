@@ -30,20 +30,29 @@ def utcnow() -> datetime:
 
 
 # --- users -----------------------------------------------------------------
-async def ensure_user(session: AsyncSession, user_id: int, lang: str = "en") -> User:
+async def ensure_user(
+    session: AsyncSession, user_id: int, lang: str = "en", username: str = ""
+) -> User:
     user = await session.get(User, user_id)
     if user is None:
-        user = User(id=user_id, lang=lang, credits=Decimal("0"))
+        user = User(id=user_id, lang=lang, username=username, credits=Decimal("0"))
         session.add(user)
         await session.flush()
+    elif username and user.username != username:
+        user.username = username
     return user
 
 
-async def touch_user(session: AsyncSession, user_id: int) -> None:
-    """Stamp last_seen on every interaction — the real activity signal."""
-    await session.execute(
-        update(User).where(User.id == user_id).values(last_seen_at=utcnow())
-    )
+async def touch_user(session: AsyncSession, user_id: int, username: str = "") -> None:
+    """Stamp last_seen on every interaction — the real activity signal.
+
+    A username is stored when Telegram supplies one. An empty value never
+    clears a name, so a legacy import survives a user who hides their handle.
+    """
+    values: dict[str, Any] = {"last_seen_at": utcnow()}
+    if username:
+        values["username"] = username
+    await session.execute(update(User).where(User.id == user_id).values(**values))
 
 
 async def monthly_active(session: AsyncSession, days: int = 30) -> int:

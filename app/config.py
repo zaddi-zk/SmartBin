@@ -10,11 +10,37 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 from typing import Annotated
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _TEST_KEY_RE = re.compile(r"sk_test_", re.IGNORECASE)
+
+
+def psycopg_url(url: str) -> str:
+    """Normalise any Postgres URL to the scheme psycopg accepts.
+
+    Settings store the platform URL as ``postgresql+asyncpg://`` (SQLAlchemy's
+    driver prefix). The legacy import talks psycopg directly, so strip the
+    driver suffix and keep ``sslmode`` intact.
+    """
+    value = url.strip()
+    if value.startswith("postgres://"):
+        value = "postgresql://" + value[len("postgres://") :]
+    for prefix in ("postgresql+asyncpg://", "postgresql+psycopg://"):
+        if value.startswith(prefix):
+            value = "postgresql://" + value[len(prefix) :]
+            break
+    return value
+
+
+def postgres_target(url: str) -> tuple[str, int, str] | None:
+    """``(host, port, database)`` for a Postgres URL, ignoring driver/params."""
+    parsed = urlparse(psycopg_url(url))
+    if parsed.scheme != "postgresql" or not parsed.hostname:
+        return None
+    return (parsed.hostname, parsed.port or 5432, parsed.path or "/")
 
 
 class Settings(BaseSettings):
@@ -38,6 +64,14 @@ class Settings(BaseSettings):
     db_schema: str = Field(
         default="",
         validation_alias=AliasChoices("DB_SCHEMA", "SMARTBIN_DB_SCHEMA"),
+    )
+    # Read-only source for the one-time legacy import. The legacy bot owns
+    # ``public.users`` in Supabase; the platform owns its own tables. When the
+    # platform already runs on that same Postgres URL there is nothing to
+    # import from, so ``legacy_source_url`` returns "".
+    legacy_db_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("LEGACY_DATABASE_URL", "DATABASE_URL"),
     )
     redis_url: str = Field(
         default="redis://localhost:6379/0",
@@ -194,6 +228,26 @@ class Settings(BaseSettings):
         if value.startswith("postgresql+asyncpg"):
             value = value.replace("sslmode=", "ssl=")
         return value
+
+    @property
+    def legacy_source_url(self) -> str:
+        """The distinct Postgres URL to import legacy users from, or ``""``.
+
+        ``DATABASE_URL`` doubles as the platform URL when ``DB_URL`` is unset.
+        Importing ``public.users`` into ``public.users`` would be a no-op with
+        write risk, so the same database is skipped unless the platform lives
+        in its own schema (where ``public`` is still the legacy source).
+        """
+        raw = self.legacy_db_url.strip()
+        if not raw:
+            return ""
+        candidate = psycopg_url(raw)
+        if not candidate.startswith("postgresql://"):
+            return ""
+        same_database = postgres_target(candidate) == postgres_target(self.db_url)
+        if same_database and self.db_schema.strip().lower() in ("", "public"):
+            return ""
+        return candidate
 
     def secrets(self) -> list[SecretStr]:
         values = [

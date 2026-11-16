@@ -10,12 +10,14 @@ from aiogram import Bot, F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
+from aiogram.types import User as TgUser
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.core import ledger
 from app.db import repo
+from app.db.migrate_legacy import migrate_legacy_users
 from app.db.models import AdminLog, Check, Gate, LedgerEntry, User
 from app.routing.router import build_view
 from app.runtime import runtime
@@ -31,6 +33,21 @@ MAX_DUMP_BYTES = 10 * 1024 * 1024
 
 def is_admin(user_id: int, settings: Settings) -> bool:
     return user_id in settings.admin_ids
+
+
+def _at(username: str | None) -> str:
+    """A Telegram handle, or a neutral dash when the user hides it."""
+    return f"@{render.esc(username)}" if username else "—"
+
+
+def _identity(tg_user: TgUser | None) -> str:
+    """Admin identity line: username (or name) plus the numeric id."""
+    if tg_user is None:
+        return "—"
+    name = f"@{render.esc(tg_user.username)}" if tg_user.username else render.esc(
+        tg_user.full_name or "no username"
+    )
+    return f"{name} · <code>{tg_user.id}</code>"
 
 
 async def log_action(
@@ -57,7 +74,10 @@ async def adm_command(message: Message, session: AsyncSession, settings: Setting
     if message.from_user is None or not is_admin(message.from_user.id, settings):
         await refuse(message, "⚙️ Admins only.")
         return
-    await message.answer("⚙️ <b>ADMIN</b>", reply_markup=kb.admin_kb())
+    await message.answer(
+        f"⚙️ <b>ADMIN</b>\n<blockquote>{_identity(message.from_user)}</blockquote>",
+        reply_markup=kb.admin_kb(),
+    )
 
 
 @router.callback_query(F.data == "adm")
@@ -66,7 +86,10 @@ async def adm(callback: CallbackQuery, settings: Settings) -> None:
         await refuse(callback, "⚙️ Admins only.")
         return
     if callback.message is not None:
-        await callback.message.edit_text("⚙️ <b>ADMIN</b>", reply_markup=kb.admin_kb())
+        await callback.message.edit_text(
+            f"⚙️ <b>ADMIN</b>\n<blockquote>{_identity(callback.from_user)}</blockquote>",
+            reply_markup=kb.admin_kb(),
+        )
 
 
 @router.callback_query(F.data == "adm:gates")
@@ -296,6 +319,7 @@ async def adm_users(callback: CallbackQuery, session: AsyncSession, settings: Se
     ):
         return
     total = await session.scalar(select(func.count()).select_from(User)) or 0
+    monthly = await repo.monthly_active(session)
     banned = (
         await session.scalar(
             select(func.count()).select_from(User).where(User.banned.is_(True))
@@ -310,17 +334,70 @@ async def adm_users(callback: CallbackQuery, session: AsyncSession, settings: Se
         ).all()
     )
     body = "\n".join(
-        f"<code>{row.id}</code> · {render.esc(Decimal(str(row.credits)))} cr · "
+        f"{_at(row.username)} · <code>{row.id}</code> · "
+        f"{render.esc(Decimal(str(row.credits)))} cr · "
         f"{'⛔' if row.banned else '🟢'} {render.esc(row.tier)}"
         for row in rows
     )
     await callback.message.edit_text(
         "👥 <b>USERS</b>\n\n"
-        f"total <b>{total}</b> · banned <b>{banned}</b>\n\n{body or 'No users yet.'}\n\n"
-        "<blockquote>/grant &lt;id&gt; &lt;cr&gt; · /ban &lt;id&gt; · "
+        f"total <b>{total}</b> · 🧠 monthly <b>{monthly}</b> · "
+        f"⛔ banned <b>{banned}</b>\n\n{body or 'No users yet.'}\n\n"
+        "<blockquote>Monthly = last seen in the last 30 days. "
+        "/grant &lt;id&gt; &lt;cr&gt; · /ban &lt;id&gt; · "
         "/key &lt;gate&gt; &lt;secret&gt; [country]</blockquote>",
-        reply_markup=kb.admin_kb(),
+        reply_markup=kb.admin_users(),
     )
+
+
+@router.callback_query(F.data == "adm:u:migrate")
+async def adm_users_migrate(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings
+) -> None:
+    if (
+        callback.from_user is None
+        or not is_admin(callback.from_user.id, settings)
+        or callback.message is None
+    ):
+        return
+    url = settings.legacy_source_url
+    if not url:
+        await callback.message.edit_text(
+            "⚠️ <b>NO LEGACY SOURCE</b>\n\n"
+            "Set <code>LEGACY_DATABASE_URL</code> (or <code>DATABASE_URL</code>) "
+            "to the legacy Supabase Postgres URL, then press import again.",
+            reply_markup=kb.admin_users(),
+        )
+        return
+
+    report = await migrate_legacy_users(session, url)
+    await log_action(
+        session,
+        callback.from_user.id,
+        "users.migrate",
+        "legacy",
+        {},
+        {
+            "read": report.read,
+            "created": report.created,
+            "updated": report.updated,
+            "error": report.error[:200],
+        },
+    )
+    if report.ok:
+        text = (
+            "📥 <b>LEGACY IMPORT</b>\n\n"
+            f"read <b>{report.read}</b> · created <b>{report.created}</b> · "
+            f"updated <b>{report.updated}</b>\n\n"
+            "<blockquote>Rerun any time: credits merge upward, bans never lift, "
+            "and the newest activity stamp wins.</blockquote>"
+        )
+    else:
+        text = (
+            "⚠️ <b>IMPORT FAILED</b>\n\n"
+            f"<code>{render.esc(report.error[:300])}</code>"
+        )
+    await callback.message.edit_text(text, reply_markup=kb.admin_users())
 
 
 @router.callback_query(F.data == "adm:stats")

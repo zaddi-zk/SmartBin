@@ -266,6 +266,13 @@ def admin_kb() -> KB:
     )
 
 
+def admin_users() -> KB:
+    return _kb(
+        [B(text="📥 Import legacy users", callback_data="adm:u:migrate")],
+        [back("adm", "⬅️ Back")],
+    )
+
+
 def admin_proxy() -> KB:
     return _kb(
         [B(text="📥 Import dump", callback_data="adm:px:imp")],

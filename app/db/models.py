@@ -46,6 +46,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=False)
     lang: Mapped[str] = mapped_column(String(8), default="en")
+    username: Mapped[str] = mapped_column(String(64), default="")
     credits: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=Decimal("0"))
     tier: Mapped[str] = mapped_column(String(16), default="free")
     proxy_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

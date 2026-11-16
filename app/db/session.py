@@ -93,6 +93,10 @@ def _add_missing_columns(sync_conn: Any) -> None:
             sync_conn.exec_driver_sql(
                 "ALTER TABLE users ADD COLUMN last_seen_at TIMESTAMP"
             )
+        if "username" not in names:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE users ADD COLUMN username VARCHAR(64) NOT NULL DEFAULT ''"
+            )
     if "proxies" in tables:
         names = {column["name"] for column in inspector.get_columns("proxies")}
         for column in ("ok_count", "fail_count"):

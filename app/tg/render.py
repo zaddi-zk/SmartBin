@@ -97,7 +97,7 @@ def menu_text(
     return (
         "🧬 <b>Smart Bin</b>\n"
         f"<blockquote>⚡ {latency(p50_ms)} p50 · 🛡️ 2-source BIN · "
-        f"💸 free on failure · 🧠 {active_users} active</blockquote>\n\n"
+        f"💸 free on failure · 🧠 {active_users} monthly</blockquote>\n\n"
         f"👤 <code>@{esc(username)}</code> · 💠 <b>{fmt_cr(credits)}</b> cr · "
         f"🎖️ <b>{esc(tier.upper())}</b>\n"
         f"🔌 Proxy: <b>{esc(proxy_label)}</b> · 🏁 Gate: <b>{esc(sticky_label)}</b>\n\n"

@@ -301,3 +301,46 @@ async def test_check_rate_limits_per_user(scope: None) -> None:
             for _ in range(31)
         ]
     assert statuses[-1] == 429
+
+
+# --- admin legacy import ----------------------------------------------------
+async def test_admin_migrate_is_admin_only(scope: None) -> None:
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.post(
+            "/api/admin/migrate", headers={"X-Telegram-Init-Data": init_data(7)}
+        )
+    assert response.status == 403
+
+
+async def test_admin_migrate_requires_a_source(scope: None) -> None:
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.post(
+            "/api/admin/migrate", headers={"X-Telegram-Init-Data": init_data(42)}
+        )
+    assert response.status == 400
+
+
+async def test_admin_migrate_runs_the_import(
+    scope: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.db.migrate_legacy import MigrationReport
+
+    calls: list[str] = []
+
+    async def fake_import(_session: AsyncSession, url: str) -> MigrationReport:
+        calls.append(url)
+        return MigrationReport(read=3, created=2, updated=1)
+
+    monkeypatch.setattr("app.miniapp.api.migrate_legacy_users", fake_import)
+
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.post(
+            "/api/admin/migrate",
+            json={"source": "postgresql://legacy:secret@example.invalid/postgres"},
+            headers={"X-Telegram-Init-Data": init_data(42)},
+        )
+        payload = await response.json()
+
+    assert response.status == 200
+    assert payload["read"] == 3 and payload["created"] == 2
+    assert calls == ["postgresql://legacy:secret@example.invalid/postgres"]

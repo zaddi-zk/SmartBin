@@ -27,6 +27,11 @@ services:
         value: /home/render/smartbin.db
       - key: DATABASE_URL
         sync: false  # Supabase/Postgres URL; when set it overrides DB_PATH
+      # Read-only source for the one-time legacy import (public.users).
+      # Optional: when unset, DATABASE_URL is used if it points at a different
+      # Postgres than DB_URL. Never set this to the platform's own URL.
+      - key: LEGACY_DATABASE_URL
+        sync: false
       # Required with DATABASE_URL: the platform's own schema. The legacy
       # users/checks tables live in public, so never leave this empty or point
       # it at public. Boot creates it if missing and pins search_path.

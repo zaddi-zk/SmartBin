@@ -21,6 +21,7 @@ from aiohttp import web
 
 from app.config import load_settings
 from app.db import repo
+from app.db.migrate_legacy import migrate_legacy_users
 from app.db.seed import (
     seed_adyen_keys,
     seed_authnet_keys,
@@ -115,6 +116,23 @@ async def main() -> None:
         seeded_proxies = await runtime().proxies.seed_from_env(session)
     if seeded_proxies:
         log.info("event=proxy_seed", added=seeded_proxies)
+
+    # Import legacy Telegram users once at boot. The pass is idempotent and
+    # read-only against Supabase, so a failure must never stop the bot.
+    legacy_url = settings.legacy_source_url
+    if legacy_url:
+        try:
+            async with session_scope() as session:
+                report = await migrate_legacy_users(session, legacy_url)
+            log.info(
+                "event=legacy_import",
+                read=report.read,
+                created=report.created,
+                updated=report.updated,
+                error=report.error,
+            )
+        except Exception as exc:
+            log.warning("event=legacy_import_failed", error=str(exc))
 
     async with httpx.AsyncClient(timeout=15) as client, session_scope() as session:
         _promoted = await runtime().keys.validate_pending(session, client)

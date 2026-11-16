@@ -80,13 +80,15 @@ async def load_user(
     tg_user = event.from_user
     if tg_user is None:
         return None
-    user = await repo.ensure_user(session, tg_user.id, tg_user.language_code or "en")
+    user = await repo.ensure_user(
+        session, tg_user.id, tg_user.language_code or "en", tg_user.username or ""
+    )
     if user.banned:
         await banned_screen(event)
         return None
     # Every real interaction stamps activity — the monthly count is measured,
     # never estimated.
-    await repo.touch_user(session, tg_user.id)
+    await repo.touch_user(session, tg_user.id, tg_user.username or "")
     if (
         settings is not None
         and bot is not None
