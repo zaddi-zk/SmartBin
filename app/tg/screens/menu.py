@@ -23,7 +23,7 @@ router = Router(name="menu")
 
 
 async def menu_view(
-    session: AsyncSession, user: User, display_name: str
+    session: AsyncSession, user: User, display_name: str, *, is_admin: bool = False
 ) -> tuple[str, InlineKeyboardMarkup]:
     gates = await repo.list_gates(session)
     states = await repo.gate_states(session)
@@ -50,7 +50,7 @@ async def menu_view(
         p50_ms=p50,
         active_users=await repo.monthly_active(session),
     )
-    return text, kb.main_menu()
+    return text, kb.main_menu(is_admin=is_admin)
 
 
 @router.message(CommandStart())
@@ -58,7 +58,9 @@ async def start(message: Message, session: AsyncSession, bot: Bot, settings: Set
     user = await load_user(session, message, bot=bot, settings=settings)
     if user is None:
         return
-    text, markup = await menu_view(session, user, username(message))
+    text, markup = await menu_view(
+        session, user, username(message), is_admin=settings.is_admin(user.id)
+    )
     await message.answer(text, reply_markup=markup)
 
 
@@ -76,7 +78,9 @@ async def main_menu(
     user = await load_user(session, callback, bot=bot, settings=settings)
     if user is None or callback.message is None:
         return
-    text, markup = await menu_view(session, user, username(callback))
+    text, markup = await menu_view(
+        session, user, username(callback), is_admin=settings.is_admin(user.id)
+    )
     await callback.message.edit_text(text, reply_markup=markup)
 
 
@@ -167,7 +171,9 @@ async def verify(
     user = await repo.ensure_user(session, callback.from_user.id)
     user.joined_ok = True
     if callback.message is not None:
-        text, markup = await menu_view(session, user, username(callback))
+        text, markup = await menu_view(
+            session, user, username(callback), is_admin=settings.is_admin(user.id)
+        )
         await callback.message.edit_text(text, reply_markup=markup)
 
 

@@ -30,8 +30,8 @@ def back_kb(data: str = "hub:main", label: str = "⬅️ Back") -> KB:
     return _kb([back(data, label)])
 
 
-def main_menu() -> KB:
-    return _kb(
+def main_menu(is_admin: bool = False) -> KB:
+    rows = [
         [B(text="💳 Check Card", callback_data="hub:hub")],
         [B(text="🔍 BIN", callback_data="bin:new"), B(text="📁 Mass", callback_data="hub:mass")],
         [
@@ -43,7 +43,12 @@ def main_menu() -> KB:
             B(text="💠 Plans", callback_data="plans"),
             B(text="🎁 Refer", callback_data="ref"),
         ],
-    )
+    ]
+    # Section 20: the admin entry point is rendered only for admins. A
+    # non-admin never sees the button, and the callback guard still refuses.
+    if is_admin:
+        rows.append([B(text="⚙️ Admin", callback_data="adm")])
+    return _kb(*rows)
 
 
 def gate_hub() -> KB:
@@ -252,8 +257,24 @@ def admin_kb() -> KB:
             B(text="🏷️ Gates", callback_data="adm:gates"),
             B(text="📈 Stats", callback_data="adm:stats"),
         ],
-        [B(text="👥 Users", callback_data="adm:u"), B(text="🧾 Log", callback_data="adm:log")],
+        [
+            B(text="🔌 Proxy pool", callback_data="adm:px"),
+            B(text="👥 Users", callback_data="adm:u"),
+        ],
+        [B(text="🧾 Log", callback_data="adm:log")],
         [back()],
+    )
+
+
+def admin_proxy() -> KB:
+    return _kb(
+        [B(text="📥 Import dump", callback_data="adm:px:imp")],
+        [
+            B(text="🔄 Refresh batch", callback_data="adm:px:refresh"),
+            B(text="🧹 Purge dead", callback_data="adm:px:purge"),
+        ],
+        [B(text="🎁 Auto-assign to users", callback_data="adm:px:auto")],
+        [back("adm", "⬅️ Back")],
     )
 
 

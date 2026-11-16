@@ -9,6 +9,7 @@ class Flow(StatesGroup):
     await_card = State()
     await_file = State()
     await_proxy = State()
+    await_proxy_bulk = State()
     await_bin = State()
     await_grant = State()
     await_report = State()

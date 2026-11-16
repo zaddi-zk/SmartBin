@@ -19,6 +19,11 @@ from collections.abc import Sequence
 
 DB_FILENAME = "venice.db"
 
+# Render's build directory is recreated on every deploy. A SQLite file there is
+# writable during the run, so nothing fails loudly — the database is simply
+# empty after the next deploy. Never trust it when a disk mount is available.
+EPHEMERAL_PREFIXES: tuple[str, ...] = ("/opt/render/project",)
+
 
 def sqlite_url(directory: str) -> str:
     """Absolute SQLite URL for ``venice.db`` inside ``directory``."""
@@ -69,17 +74,31 @@ def resolve_db_url(
     configured: str | None = None,
     *,
     candidates: Sequence[str] | None = None,
+    persistent: Sequence[str] | None = None,
+    ephemeral_prefixes: Sequence[str] = EPHEMERAL_PREFIXES,
 ) -> str:
     """Return the DB URL the platform should boot with.
 
     A non-SQLite URL (Postgres) is the operator's explicit choice and is kept
-    as-is. A SQLite URL is kept only when it is genuinely usable; otherwise the
-    first writable fallback directory wins.
+    as-is. A SQLite URL is kept only when it is genuinely usable and not on an
+    ephemeral build path; otherwise the first writable fallback directory wins.
     """
     configured = (configured or "").strip()
     if configured and not configured.startswith("sqlite"):
         return configured
+    persistent_dirs = tuple(persistent) if persistent is not None else ("/home/render",)
     if configured and _sqlite_usable(configured):
+        path = sqlite_path(configured)
+        if any(path.startswith(prefix) for prefix in ephemeral_prefixes):
+            for directory in persistent_dirs:
+                url = sqlite_url(directory)
+                if os.path.dirname(path) != directory and _sqlite_usable(url):
+                    print(
+                        f"[boot] DB_URL={configured} is on an ephemeral path; "
+                        f"using {url}",
+                        file=sys.stderr,
+                    )
+                    return url
         return configured
     if configured:
         print(

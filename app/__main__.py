@@ -26,6 +26,7 @@ from app.db.session import init_db, session_scope
 from app.jobs.breaker_tick import breaker_tick
 from app.jobs.canary import canary_tick
 from app.jobs.health_tick import health_tick
+from app.jobs.proxy_tick import proxy_tick
 from app.logging import configure
 from app.runtime import runtime
 from app.tg.app import build_dispatcher
@@ -99,6 +100,9 @@ async def main() -> None:
         await seed_stripe_keys(session, settings.stripe_key_list())
         await seed_adyen_keys(session, settings.adyen_key_list())
         await repo.enable_installed_gates(session, set(runtime().adapters.names))
+        seeded_proxies = await runtime().proxies.seed_from_env(session)
+    if seeded_proxies:
+        log.info("event=proxy_seed", added=seeded_proxies)
 
     async with httpx.AsyncClient(timeout=15) as client, session_scope() as session:
         _promoted = await runtime().keys.validate_pending(session, client)
@@ -113,6 +117,7 @@ async def main() -> None:
         asyncio.create_task(health_tick(stop)),
         asyncio.create_task(breaker_tick(stop)),
         asyncio.create_task(canary_tick(stop)),
+        asyncio.create_task(proxy_tick(stop)),
         asyncio.create_task(_serve_web(_health_port())),
     ]
     try:

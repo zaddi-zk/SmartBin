@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     dup_window_s: int = 60
     require_proxy: bool = False
     free_proxy_cooldown_s: int = 86_400
+    proxy_seed_file: str = ""
+    proxy_seed_url: str = ""
+    proxy_refresh_hours: int = 24
+    proxy_max_latency_ms: int = 4000
 
     # --- access -------------------------------------------------------------
     admin_ids: Annotated[list[int], NoDecode] = Field(
@@ -163,6 +167,9 @@ class Settings(BaseSettings):
     def adyen_key_list(self) -> list[str]:
         value = self.adyen_api_key.get_secret_value().strip()
         return [value] if value else []
+
+    def is_admin(self, user_id: int) -> bool:
+        return user_id in self.admin_ids
 
     def assert_live_keys(self) -> None:
         """Section 5: refuse sk_test_ at load when LIVE_ONLY is on."""

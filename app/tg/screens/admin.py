@@ -6,8 +6,9 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 import httpx
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,8 +22,11 @@ from app.runtime import runtime
 from app.tg import keyboards as kb
 from app.tg import render
 from app.tg.guards import refuse
+from app.tg.states import Flow
 
 router = Router(name="admin")
+
+MAX_DUMP_BYTES = 10 * 1024 * 1024
 
 
 def is_admin(user_id: int, settings: Settings) -> bool:
@@ -129,6 +133,193 @@ async def adm_gate(callback: CallbackQuery, session: AsyncSession, settings: Set
         f"processor <code>{render.esc(gate.processor)}</code> · lane {render.esc(gate.lane)}\n"
         f"enabled <b>{gate.enabled}</b> · state <b>{render.esc(state_row.state)}</b>",
         reply_markup=kb.admin_gate(view),
+    )
+
+
+@router.callback_query(F.data == "adm:px")
+async def adm_proxy(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
+    if (
+        callback.from_user is None
+        or not is_admin(callback.from_user.id, settings)
+        or callback.message is None
+    ):
+        return
+    stats = await runtime().proxies.stats(session)
+    fastest = f"{stats.fastest_ms}ms" if stats.fastest_ms is not None else "—"
+    await callback.message.edit_text(
+        "🔌 <b>PROXY POOL</b>\n\n"
+        f"📦 rows <b>{stats.total}</b> · 🟢 alive <b>{stats.alive}</b> · "
+        f"🧪 tested <b>{stats.tested}</b>\n"
+        f"⚡ fastest <b>{fastest}</b> · 👥 users without proxy <b>{stats.users_without}</b>\n\n"
+        "<blockquote>Only recently checked, alive rows are ever handed to a check. "
+        "Import a dump, then refresh.</blockquote>",
+        reply_markup=kb.admin_proxy(),
+    )
+
+
+@router.callback_query(F.data == "adm:px:refresh")
+async def adm_proxy_refresh(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings
+) -> None:
+    if callback.from_user is None or not is_admin(callback.from_user.id, settings):
+        return
+    alive, tested = await runtime().proxies.refresh(session, limit=200)
+    await log_action(
+        session,
+        callback.from_user.id,
+        "proxy.refresh",
+        "pool",
+        {},
+        {"tested": tested, "alive": alive},
+    )
+    if callback.message is not None:
+        await callback.message.edit_text(
+            "🔄 <b>REFRESH</b>\n\n"
+            f"🧪 tested <b>{tested}</b> · 🟢 alive <b>{alive}</b>",
+            reply_markup=kb.admin_proxy(),
+        )
+
+
+@router.callback_query(F.data == "adm:px:purge")
+async def adm_proxy_purge(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings
+) -> None:
+    if callback.from_user is None or not is_admin(callback.from_user.id, settings):
+        return
+    purged = await runtime().proxies.purge_dead(session)
+    await log_action(session, callback.from_user.id, "proxy.purge", "pool", {}, {"purged": purged})
+    if callback.message is not None:
+        await callback.message.edit_text(
+            f"🧹 <b>PURGE</b>\n\nDeleted <b>{purged}</b> dead rows. "
+            "Users and keys pointing at them were detached.",
+            reply_markup=kb.admin_proxy(),
+        )
+
+
+@router.callback_query(F.data == "adm:px:auto")
+async def adm_proxy_auto(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings
+) -> None:
+    if callback.from_user is None or not is_admin(callback.from_user.id, settings):
+        return
+    assigned = await runtime().proxies.auto_assign(session)
+    await log_action(
+        session, callback.from_user.id, "proxy.auto", "users", {}, {"assigned": assigned}
+    )
+    if callback.message is not None:
+        await callback.message.edit_text(
+            "🎁 <b>AUTO-ASSIGN</b>\n\n"
+            f"Assigned a fast proxy to <b>{assigned}</b> user(s) without live egress.\n"
+            "<blockquote>Runs automatically on the proxy tick as well.</blockquote>",
+            reply_markup=kb.admin_proxy(),
+        )
+
+
+@router.callback_query(F.data == "adm:px:imp")
+async def adm_proxy_import(callback: CallbackQuery, state: FSMContext, settings: Settings) -> None:
+    if callback.from_user is None or not is_admin(callback.from_user.id, settings):
+        return
+    await state.set_state(Flow.await_proxy_bulk)
+    if callback.message is not None:
+        await callback.message.edit_text(
+            "📥 <b>IMPORT PROXIES</b>\n\n"
+            "Paste lines or send a <code>.txt</code> file. Accepted:\n"
+            "<code>host:port</code> · <code>host:port:user:pass</code> · "
+            "<code>scheme://user:pass@host:port</code>\n\n"
+            "<blockquote>Duplicates are skipped. The first 40 new rows are "
+            "tested immediately; the rest warm up on the tick.</blockquote>",
+            reply_markup=kb.back_kb("adm:px", "⬅️ Back"),
+        )
+
+
+async def _import_dump(
+    message: Message, session: AsyncSession, state: FSMContext, text: str
+) -> None:
+    await state.clear()
+    pool = runtime().proxies
+    added = await pool.import_many(session, text)
+    if added == 0:
+        await message.answer(
+            "⚠️ No new proxies found. Every line was a duplicate or not a proxy.",
+            reply_markup=kb.admin_proxy(),
+        )
+        return
+    alive, tested = await pool.refresh(session, limit=40)
+    await message.answer(
+        "📥 <b>IMPORTED</b>\n\n"
+        f"➕ added <b>{added}</b> · 🧪 tested <b>{tested}</b> · 🟢 alive <b>{alive}</b>",
+        reply_markup=kb.admin_proxy(),
+    )
+
+
+@router.message(Flow.await_proxy_bulk, F.text)
+async def adm_proxy_import_text(
+    message: Message, session: AsyncSession, state: FSMContext, settings: Settings
+) -> None:
+    if message.from_user is None or not is_admin(message.from_user.id, settings):
+        await refuse(message, "⚙️ Admins only.")
+        return
+    await _import_dump(message, session, state, message.text or "")
+
+
+@router.message(Flow.await_proxy_bulk, F.document)
+async def adm_proxy_import_file(
+    message: Message,
+    session: AsyncSession,
+    state: FSMContext,
+    settings: Settings,
+    bot: Bot,
+) -> None:
+    if message.from_user is None or not is_admin(message.from_user.id, settings):
+        await refuse(message, "⚙️ Admins only.")
+        return
+    document = message.document
+    if document is None:
+        return
+    if (document.file_size or 0) > MAX_DUMP_BYTES:
+        await message.answer("⚠️ File too large. Split it under 10 MB.")
+        return
+    buffer = await bot.download(document)
+    if buffer is None:
+        await message.answer("⚠️ Could not download that file.")
+        return
+    text = buffer.read().decode("utf-8", errors="ignore")
+    await _import_dump(message, session, state, text)
+
+
+@router.callback_query(F.data == "adm:u")
+async def adm_users(callback: CallbackQuery, session: AsyncSession, settings: Settings) -> None:
+    if (
+        callback.from_user is None
+        or not is_admin(callback.from_user.id, settings)
+        or callback.message is None
+    ):
+        return
+    total = await session.scalar(select(func.count()).select_from(User)) or 0
+    banned = (
+        await session.scalar(
+            select(func.count()).select_from(User).where(User.banned.is_(True))
+        )
+        or 0
+    )
+    rows = list(
+        (
+            await session.scalars(
+                select(User).order_by(User.last_seen_at.desc().nulls_last()).limit(12)
+            )
+        ).all()
+    )
+    body = "\n".join(
+        f"<code>{row.id}</code> · {render.esc(Decimal(str(row.credits)))} cr · "
+        f"{'⛔' if row.banned else '🟢'} {render.esc(row.tier)}"
+        for row in rows
+    )
+    await callback.message.edit_text(
+        "👥 <b>USERS</b>\n\n"
+        f"total <b>{total}</b> · banned <b>{banned}</b>\n\n{body or 'No users yet.'}\n\n"
+        "<blockquote>/grant &lt;id&gt; &lt;cr&gt; · /ban &lt;id&gt; · "
+        "/key &lt;gate&gt; &lt;secret&gt; [country]</blockquote>",
+        reply_markup=kb.admin_kb(),
     )
 
 

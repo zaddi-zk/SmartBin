@@ -19,6 +19,37 @@ def test_writable_configured_sqlite_is_kept(tmp_path: Path) -> None:
     assert resolve_db_url(url) == url
 
 
+def test_ephemeral_build_path_moves_to_persistent_disk(tmp_path: Path) -> None:
+    build = tmp_path / "opt" / "render" / "project" / "src"
+    build.mkdir(parents=True)
+    disk = tmp_path / "home" / "render"
+    configured = sqlite_url(str(build))
+
+    resolved = resolve_db_url(
+        configured,
+        persistent=(str(disk),),
+        ephemeral_prefixes=(str(build.parent.parent),),
+    )
+
+    assert resolved == sqlite_url(str(disk))
+
+
+def test_ephemeral_path_stays_when_no_persistent_disk(tmp_path: Path) -> None:
+    build = tmp_path / "opt" / "render" / "project" / "src"
+    build.mkdir(parents=True)
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a directory")
+    configured = sqlite_url(str(build))
+
+    resolved = resolve_db_url(
+        configured,
+        persistent=(str(blocker),),
+        ephemeral_prefixes=(str(build.parent.parent),),
+    )
+
+    assert resolved == configured
+
+
 def test_missing_disk_mount_falls_back_to_writable_candidate(tmp_path: Path) -> None:
     # The Render failure: /home/render exists in the URL but the mount is not
     # provisioned, so SQLite cannot create the file there.
