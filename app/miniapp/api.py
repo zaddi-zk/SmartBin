@@ -306,8 +306,11 @@ async def check(request: web.Request) -> web.Response:
                 status=402,
             )
         except Exception as exc:
-            log.warning("event=miniapp_check_failed", user=uid, error=str(exc))
-            return web.json_response({"error": "check failed"}, status=503)
+            log.warning("event=miniapp_check_failed", user=uid, error=str(exc), exc_info=True)
+            # A 503 with no reason is untraceable from the outside. Admins get
+            # the exception text; everyone else still gets the opaque error.
+            detail = f"{type(exc).__name__}: {exc}"[:300] if settings.is_admin(uid) else ""
+            return web.json_response({"error": "check failed", "detail": detail}, status=503)
 
         if outcome.gate_id:
             user.sticky_gate = outcome.gate_id

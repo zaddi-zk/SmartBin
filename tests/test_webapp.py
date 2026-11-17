@@ -307,6 +307,43 @@ async def test_report_rejects_a_bad_bin_or_field(scope: None) -> None:
         ).status == 400
 
 
+async def test_check_crash_is_traceable_for_admins_only(
+    monkeypatch: pytest.MonkeyPatch, scope: None, session: AsyncSession
+) -> None:
+    session.add(User(id=42, credits=Decimal("10")))
+    session.add(User(id=7, credits=Decimal("10")))
+    await session.flush()
+
+    class Boom:
+        async def run(self, *args: Any, **kwargs: Any) -> Any:
+            raise RuntimeError("adapter exploded")
+
+    fake = SimpleNamespace(
+        settings=settings(), adapters=SimpleNamespace(names=("stripe",)), executor=Boom()
+    )
+    monkeypatch.setattr("app.miniapp.api.runtime", lambda: fake)
+
+    async with TestClient(TestServer(build_app())) as client:
+        admin = await client.post(
+            "/api/check",
+            json={"card": "4242424242424242|11|29|716"},
+            headers={"X-Telegram-Init-Data": init_data(42)},
+        )
+        user = await client.post(
+            "/api/check",
+            json={"card": "4242424242424242|11|29|716"},
+            headers={"X-Telegram-Init-Data": init_data(7)},
+        )
+        admin_body = await admin.json()
+        user_body = await user.json()
+
+    assert admin.status == 503 and user.status == 503
+    assert "adapter exploded" in admin_body["detail"]
+    # A normal user must not learn anything about internals.
+    assert user_body["detail"] == ""
+    assert "detail" in user_body
+
+
 async def test_check_rate_limits_per_user(scope: None) -> None:
     headers = {"X-Telegram-Init-Data": init_data(7)}
     async with TestClient(TestServer(build_app())) as client:
