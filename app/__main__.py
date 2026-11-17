@@ -39,6 +39,7 @@ from app.jobs.proxy_tick import proxy_tick
 from app.logging import configure
 from app.runtime import runtime
 from app.tg.app import build_dispatcher
+from app.tg.description import description_tick
 from app.webapp import build_app, public_base
 
 log = structlog.get_logger("app")
@@ -148,6 +149,7 @@ async def main() -> None:
         asyncio.create_task(breaker_tick(stop)),
         asyncio.create_task(canary_tick(stop)),
         asyncio.create_task(proxy_tick(stop)),
+        asyncio.create_task(description_tick(bot, stop)),
         asyncio.create_task(_serve_web(_health_port())),
     ]
     try:
