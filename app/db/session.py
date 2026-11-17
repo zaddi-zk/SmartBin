@@ -97,6 +97,12 @@ def _add_missing_columns(sync_conn: Any) -> None:
             sync_conn.exec_driver_sql(
                 "ALTER TABLE users ADD COLUMN username VARCHAR(64) NOT NULL DEFAULT ''"
             )
+    if "gate_state" in tables:
+        names = {column["name"] for column in inspector.get_columns("gate_state")}
+        if "blocked_until" not in names:
+            sync_conn.exec_driver_sql(
+                "ALTER TABLE gate_state ADD COLUMN blocked_until TIMESTAMP"
+            )
     if "proxies" in tables:
         names = {column["name"] for column in inspector.get_columns("proxies")}
         for column in ("ok_count", "fail_count"):

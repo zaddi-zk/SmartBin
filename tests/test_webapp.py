@@ -6,6 +6,7 @@ import json
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -14,7 +15,7 @@ import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from app.config import Settings
 from app.db import repo
-from app.db.models import User
+from app.db.models import GateStateRow, User
 from app.db.seed import seed_gates
 from app.miniapp.auth import sign_init_data, verify_init_data
 from app.webapp import build_app, page_html, public_base
@@ -378,6 +379,38 @@ async def test_health_reports_measured_samples_not_gate_counts(
     async with TestClient(TestServer(build_app())) as client:
         measured = await (await client.get("/api/health")).json()
     assert measured["samples_24h"] == {"ok": 1, "total": 2}
+
+
+async def test_a_blocked_gate_does_not_crash_the_status_endpoints(
+    scope: None, session: AsyncSession
+) -> None:
+    # Regression: the block expiry was compared as an aware/naive pair, which
+    # SQLite guarantees to be naive. That raised TypeError and turned both
+    # /api/health and /api/gates into 500s for every user.
+    await seed_gates(session)
+    await repo.ensure_gate_state(session, "auth_stripe")
+    state = await session.get(GateStateRow, "auth_stripe")
+    assert state is not None
+    state.last_err_code = "raw_card_data_blocked"
+    state.blocked_until = datetime.now(UTC) + timedelta(minutes=10)
+    await session.commit()
+    # Drop the identity map: the point of this test is what SQLite *returns*,
+    # which is a naive datetime, not the aware value still held in memory.
+    session.expire_all()
+
+    async with TestClient(TestServer(build_app())) as client:
+        health = await client.get("/api/health")
+        gates = await client.get(
+            "/api/gates", headers={"X-Telegram-Init-Data": init_data(7)}
+        )
+        gates_body = await gates.json()
+
+    assert health.status == 200
+    assert gates.status == 200
+    stripe = next(g for g in gates_body["gates"] if g["id"] == "auth_stripe")
+    assert stripe["last_error"] == "raw_card_data_blocked"
+    # Not ready, so nothing offers it as a runnable gate.
+    assert stripe["ready"] is False
 
 
 # --- admin legacy import ----------------------------------------------------

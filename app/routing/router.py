@@ -109,6 +109,12 @@ def build_view(
     )
 
 
+def as_utc(value: datetime) -> datetime:
+    """SQLite hands back naive datetimes; comparing one to an aware ``now``
+    raises TypeError, which is a 500 on every screen that reads gate state."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
 def blocker_until(now: datetime | None = None) -> datetime:
     """When a just-observed permanent block stops being trusted."""
     return (now or datetime.now(UTC)) + timedelta(seconds=BLOCK_TTL_S)
@@ -117,16 +123,16 @@ def blocker_until(now: datetime | None = None) -> datetime:
 def _blocker_is_fresh(state: GateStateRow | None) -> bool:
     """Trust a recorded block until its expiry, an admin probe, or its age.
 
-    ``record_sample`` sets ``next_probe_at`` when it records a permanent
+    ``record_sample`` sets ``blocked_until`` when it records a permanent
     blocker, so this is a real timestamp rather than an inference. The admin
     ``probe`` action clears ``last_err_code`` and re-arms either way.
     """
     if state is None or not state.last_err_code:
         return False
-    expiry = state.next_probe_at
+    expiry = state.blocked_until
     if expiry is None:
         return True
-    return datetime.now(UTC) < expiry
+    return datetime.now(UTC) < as_utc(expiry)
 
 
 def matches_country(gate: GateView, iso2: str) -> bool:

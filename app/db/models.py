@@ -95,6 +95,11 @@ class GateStateRow(Base):
     success_pct: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     last_ok_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_err_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # When a *permanent* block stops being trusted. Separate from
+    # ``next_probe_at``, which the breaker owns for OPEN -> HALF_OPEN timing.
+    blocked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     samples: Mapped[int] = mapped_column(Integer, default=0)
 
 

@@ -511,8 +511,9 @@ class CheckExecutor:
         failure = (code or verdict.value.lower())[:64]
         state.last_err_code = None if ok else failure
         # A permanent block stops routing this gate until it expires, so the
-        # user is never invited to tap something that cannot work.
-        state.next_probe_at = (
+        # user is never invited to tap something that cannot work. Kept apart
+        # from ``next_probe_at``, which the breaker owns.
+        state.blocked_until = (
             blocker_until() if not ok and failure in PERMANENT_BLOCKERS else None
         )
         if ok:

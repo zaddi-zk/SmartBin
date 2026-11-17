@@ -108,7 +108,7 @@ def blocked_state(
         p50_ms=1000,
         samples=3,
         last_err_code=code,
-        next_probe_at=expiry,
+        blocked_until=expiry,
     )
 
 
@@ -137,3 +137,19 @@ def test_an_ordinary_key_failure_is_not_a_permanent_block() -> None:
     view = build_view(gate("auth_stripe"), row, installed=("stripe",))
     assert view.ready is True
     assert view.blocked == ""
+
+
+def test_a_naive_expiry_from_sqlite_does_not_crash_the_router() -> None:
+    # SQLite drops tzinfo on DateTime columns. Comparing that naive value to an
+    # aware `now` raised TypeError and took /api/health and /api/gates down.
+    naive = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
+    row = blocked_state("auth_stripe", "raw_card_data_blocked", naive)
+    view = build_view(gate("auth_stripe"), row, installed=("stripe",))
+    assert view.ready is False
+    assert view.blocked
+
+
+def test_a_naive_expired_stamp_recovers_the_gate() -> None:
+    naive = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=5)
+    row = blocked_state("auth_stripe", "raw_card_data_blocked", naive)
+    assert build_view(gate("auth_stripe"), row, installed=("stripe",)).ready is True
