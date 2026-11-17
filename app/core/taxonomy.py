@@ -88,6 +88,7 @@ GATE_FAULT: Final[frozenset[str]] = frozenset(
         "resource_missing",
         "invalid_number",  # Stripe's "PAN sent server-side" refusal
         "request_not_allowed",
+        "raw_card_data_blocked",
         "setup_intent_unexpected_state",
         "payment_intent_unexpected_state",
     }

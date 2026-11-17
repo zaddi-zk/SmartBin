@@ -439,3 +439,35 @@ async def test_payment_method_carries_the_postal_code() -> None:
     form = parse_qs(route.calls[0].request.content.decode())
     assert form["billing_details[address][postal_code]"] == ["90210"]
     assert form["card[number]"] == ["4242424242424242"]
+
+
+@respx.mock
+async def test_raw_card_blocked_is_named_and_never_a_decline() -> None:
+    # Stripe refuses PANs from a server unless the account allows raw card data
+    # APIs. That is a capability gap: it must say so, and must not look like a
+    # declined card or a bad key.
+    respx.post(METHODS).mock(
+        return_value=httpx.Response(
+            402,
+            json={
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "invalid_number",
+                    "message": (
+                        "Sending credit card numbers directly to the Stripe API is "
+                        "generally unsafe. To continue processing use Stripe.js."
+                    ),
+                }
+            },
+        )
+    )
+    setup = respx.post(SETUP).mock(return_value=httpx.Response(200, json={}))
+
+    async with httpx.AsyncClient() as client:
+        raw = await adapter().auth(client, key(), CARD, 0, False)
+
+    assert setup.call_count == 0
+    assert raw.status == 403
+    assert classify(raw.status, raw.body) == (Verdict.GATE_FAULT, "raw_card_data_blocked")
+    message = raw.body["error"]["message"]
+    assert "raw card data" in message

@@ -25,6 +25,16 @@ def _as_mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
+# Stripe refuses PANs sent from a server unless the account has raw card data
+# APIs enabled. The wording is stable across their SDKs and clients.
+_RAW_CARD_REFUSAL = "sending credit card numbers directly to the stripe api"
+
+
+def _raw_card_refused(body: Mapping[str, Any]) -> bool:
+    message = _as_mapping(body.get("error")).get("message")
+    return isinstance(message, str) and _RAW_CARD_REFUSAL in message.lower()
+
+
 class StripeAdapter:
     name = "stripe"
 
@@ -93,6 +103,22 @@ class StripeAdapter:
         body = _json(response)
         ref = str(body.get("id") or "")
         if response.status_code >= 400 or not ref:
+            if _raw_card_refused(body):
+                # Name the account setting instead of leaving the operator with
+                # an anonymous invalid_request_error. This is a capability gap,
+                # not a declined card, and no payload change can fix it.
+                return "", RawResult(
+                    403,
+                    {
+                        "error": {
+                            "code": "raw_card_data_blocked",
+                            "message": (
+                                "Stripe refuses PANs from this server. Enable raw card "
+                                "data APIs for the account or this gate cannot check cards."
+                            ),
+                        }
+                    },
+                )
             return "", RawResult(
                 response.status_code if response.status_code >= 400 else 502,
                 body,
