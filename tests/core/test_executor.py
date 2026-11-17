@@ -176,3 +176,13 @@ def test_provider_detail_redacts_card_shaped_digits() -> None:
     assert "4242 4242" not in detail
     assert "4242424242424242" not in detail
     assert "[redacted]" in detail
+
+
+async def test_gate_state_records_why_a_dispatch_failed(session: AsyncSession) -> None:
+    # `gate_fault` on the board is useless to an operator; the recorded reason
+    # has to be the provider code so the fix is obvious.
+    adapter = FakeAdapter(RawResult(403, {"error": {"code": "raw_card_data_blocked"}}))
+    user, executor = await setup(session, adapter)
+    await executor.run(session, user=user, card=CARD, lane="auth")
+    state = await repo.ensure_gate_state(session, "auth_stripe")
+    assert state.last_err_code == "raw_card_data_blocked"

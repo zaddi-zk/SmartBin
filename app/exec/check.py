@@ -191,7 +191,7 @@ class CheckExecutor:
             lane="3ds_probe",
             detail=provider_detail(raw.body),
         )
-        await self.record_sample(session, gate.id, latency, verdict)
+        await self.record_sample(session, gate.id, latency, verdict, code)
         return verdict, code
 
     async def run(
@@ -295,7 +295,7 @@ class CheckExecutor:
                 provider_detail=provider_detail(raw.body),
             )
             attempts.append(attempt)
-            await self.record_sample(session, gate.id, latency, verdict)
+            await self.record_sample(session, gate.id, latency, verdict, code)
 
             if verdict is Verdict.KEY_DEAD:
                 await self.keys.bench(session, key.id, code or "key_dead")
@@ -477,7 +477,12 @@ class CheckExecutor:
         return raw.three_ds
 
     async def record_sample(
-        self, session: AsyncSession, gate_id: str, latency_ms: int, verdict: Verdict
+        self,
+        session: AsyncSession,
+        gate_id: str,
+        latency_ms: int,
+        verdict: Verdict,
+        code: str = "",
     ) -> None:
         ok = verdict in (Verdict.APPROVED, Verdict.LIVE, Verdict.LIVE_3DS, Verdict.DEAD)
         health = await repo.load_health(session, gate_id)
@@ -495,7 +500,9 @@ class CheckExecutor:
         success = health.success_pct()
         state.success_pct = Decimal(str(success)) if success is not None else None
         state.samples = health.total
-        state.last_err_code = None if ok else verdict.value.lower()
+        # Record *why* the dispatch failed, not the verdict name: an operator
+        # reading the board needs `raw_card_data_blocked`, not `gate_fault`.
+        state.last_err_code = None if ok else (code or verdict.value.lower())[:64]
         if ok:
             state.last_ok_at = _now()
 

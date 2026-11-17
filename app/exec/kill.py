@@ -145,7 +145,7 @@ class KillExecutor:
                 provider_ref=raw.provider_ref,
             )
             rungs.append(rung)
-            await self.executor.record_sample(session, gate.id, latency, verdict)
+            await self.executor.record_sample(session, gate.id, latency, verdict, code)
             log_check(
                 user_id=user.id,
                 gate_id=gate.id,

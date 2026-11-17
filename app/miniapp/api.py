@@ -102,7 +102,8 @@ def _gate_list(
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for gate in session_gates:
-        view = build_view(gate, states.get(gate.id), installed=installed)
+        state_row = states.get(gate.id)
+        view = build_view(gate, state_row, installed=installed)
         out.append(
             {
                 "id": view.id,
@@ -115,6 +116,9 @@ def _gate_list(
                 "p50_ms": view.p50_ms,
                 "success_pct": view.success_pct,
                 "handles_3ds": view.handles_3ds,
+                # Why the last dispatch failed. Without this, a blocked gate
+                # reads as HEALTHY next to a 0% success rate.
+                "last_error": (state_row.last_err_code or "") if state_row else "",
             }
         )
     return out
