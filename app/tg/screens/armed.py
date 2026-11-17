@@ -10,6 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.bin.measure import canary_available
 from app.config import Settings
 from app.core.ledger import InsufficientCredits
 from app.core.parse import Card, CardError, fmt_cr
@@ -33,7 +34,9 @@ async def armed_for(session: AsyncSession, gate_id: str) -> tuple[GateView, str]
     state = await repo.ensure_gate_state(session, gate.id)
     from app.routing.router import build_view
 
-    view = build_view(gate, state)
+    view = build_view(gate, state, installed=runtime().adapters.names)
+    if not view.ready:
+        return None
     return view, render.armed_text(view)
 
 
@@ -84,10 +87,18 @@ async def arm(
         await callback.message.edit_text(render.hub_text(), reply_markup=kb.gate_hub())
         return
     if not gate.enabled or runtime().adapters.get(gate.processor) is None:
+        if not gate.enabled:
+            reason = "This gate is disabled."
+        else:
+            reason = (
+                "No live key is configured for this processor, so no card can "
+                "reach it. Set STRIPE_API_KEY or STRIPE_API_KEYS."
+                if gate.processor == "stripe"
+                else "No key is configured for this processor, so no card can reach it."
+            )
         await callback.message.edit_text(
-            f"🚧 <b>{render.esc(gate.label)}</b> is not live yet.\n"
-            "<blockquote>No adapter is installed for this processor, so no card "
-            "can reach it. 0 cr charged.</blockquote>",
+            f"🚧 <b>{render.esc(gate.label)}</b>\n"
+            f"<blockquote>{reason} 0 cr charged.</blockquote>",
             reply_markup=kb.make_kb(
                 [kb.Button(text="🔀 Nearest healthy", callback_data=f"gate:near:{gate.id}")],
                 [kb.back(f"hub:{gate.lane}", "⬅️ Back")],
@@ -180,9 +191,10 @@ async def idle_text(
             await message.answer("⚠️ BIN lookup is unavailable right now.")
             return
         gates = await runtime().executor.views(session)
+        canary = await canary_available(session, settings)
         await message.answer(
-            render.render_bin(record, gates),
-            reply_markup=kb.bin_result(record, gates),
+            render.render_bin(record, gates, canary=canary),
+            reply_markup=kb.bin_result(record, gates, canary=canary),
         )
         return
 

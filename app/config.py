@@ -346,7 +346,10 @@ class Settings(BaseSettings):
 
     @property
     def stripe_ready(self) -> bool:
-        return bool(self.stripe_secret_key.get_secret_value())
+        # The adapter takes its key per request from the key pool, so the pool
+        # env (STRIPE_API_KEYS) is enough to register it. Requiring the single
+        # legacy key here left Stripe unregistered while keys sat PENDING.
+        return bool(self.stripe_key_list())
 
     @property
     def adyen_ready(self) -> bool:

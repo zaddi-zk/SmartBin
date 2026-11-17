@@ -9,9 +9,10 @@ by editing a query string.
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections import defaultdict, deque
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any
 
 import structlog
@@ -25,7 +26,7 @@ from app.core.parse import Card, CardError
 from app.core.verdicts import Verdict
 from app.db import repo
 from app.db.migrate_legacy import migrate_legacy_users
-from app.db.models import Gate, GateStateRow, User
+from app.db.models import ApiKey, Gate, GateStateRow, User
 from app.db.session import session_scope
 from app.miniapp.auth import verify_init_data
 from app.routing.router import build_view
@@ -95,11 +96,13 @@ def _quota(user: User, *, is_admin: bool) -> dict[str, Any]:
 
 
 def _gate_list(
-    session_gates: Sequence[Gate], states: dict[str, GateStateRow]
+    session_gates: Sequence[Gate],
+    states: dict[str, GateStateRow],
+    installed: Collection[str],
 ) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for gate in session_gates:
-        view = build_view(gate, states.get(gate.id))
+        view = build_view(gate, states.get(gate.id), installed=installed)
         out.append(
             {
                 "id": view.id,
@@ -107,6 +110,7 @@ def _gate_list(
                 "lane": view.lane,
                 "state": view.state,
                 "enabled": view.enabled,
+                "ready": view.ready,
                 "cost_cr": str(view.cost_cr),
                 "p50_ms": view.p50_ms,
                 "success_pct": view.success_pct,
@@ -122,18 +126,23 @@ async def health(_: web.Request) -> web.Response:
     async with session_scope() as session:
         gates = await repo.list_gates(session)
         states = await repo.gate_states(session)
-        views = [build_view(gate, states.get(gate.id)) for gate in gates]
+        views = [
+            build_view(gate, states.get(gate.id), installed=runtime().adapters.names)
+            for gate in gates
+        ]
+        # Only gates that can actually execute count as healthy. Reporting an
+        # enabled-but-keyless gate as healthy is how a green board hid a bot
+        # that could not run a single check.
         total = sum(1 for view in views if view.enabled)
-        healthy = sum(
-            1 for view in views if view.enabled and view.state in ("HEALTHY", "DEGRADED")
-        )
+        healthy = sum(1 for view in views if view.ready and view.state in ("HEALTHY", "DEGRADED"))
+        ready = sum(1 for view in views if view.ready)
         latencies = [view.p50_ms for view in views if view.p50_ms]
     return web.json_response(
         {
             "status": "healthy" if healthy else "degraded",
-            "gates": {"total": total, "healthy": healthy},
+            "gates": {"total": total, "healthy": healthy, "ready": ready},
             "latency_p50": min(latencies) if latencies else None,
-            "canary_24h": {"successful": healthy, "total": total or 1},
+            "canary_24h": {"successful": healthy, "total": ready or 1},
         }
     )
 
@@ -158,7 +167,7 @@ async def status(request: web.Request) -> web.Response:
             },
             "quota": _quota(user, is_admin=runtime().settings.is_admin(uid)),
             "support_url": _support_url(),
-            "gates": _gate_list(gates, states),
+            "gates": _gate_list(gates, states, runtime().adapters.names),
         }
     return web.json_response(payload)
 
@@ -187,7 +196,11 @@ async def gates(request: web.Request) -> web.Response:
     async with session_scope() as session:
         rows = await repo.list_gates(session)
         states = await repo.gate_states(session)
-        payload = _gate_list([row for row in rows if row.lane == lane], states)
+        payload = _gate_list(
+            [row for row in rows if row.lane == lane],
+            states,
+            runtime().adapters.names,
+        )
     return web.json_response({"gates": payload})
 
 
@@ -489,6 +502,76 @@ async def admin_migrate(request: web.Request) -> web.Response:
     )
 
 
+async def admin_diagnostics(request: web.Request) -> web.Response:
+    """Report what this instance can actually do. Admins only.
+
+    The point is to replace inference with observed facts: which adapters are
+    registered, which gates are therefore runnable, how many keys exist per
+    state, and whether a canary exists. No secret value is ever returned.
+    """
+    uid, error = await _user_id(request)
+    if error is not None:
+        return error
+    settings = runtime().settings
+    if not settings.is_admin(uid):
+        return web.json_response({"error": "admins only"}, status=403)
+
+    installed = sorted(runtime().adapters.names)
+    async with session_scope() as session:
+        gates = await repo.list_gates(session)
+        states = await repo.gate_states(session)
+        canaries = await repo.canary_cards(session)
+        key_rows = (
+            await session.execute(select(ApiKey.gate_id, ApiKey.state))
+        ).all()
+
+    keys_by_gate: dict[str, dict[str, int]] = {}
+    for gate_id, state in key_rows:
+        counts = keys_by_gate.setdefault(gate_id, {})
+        counts[state] = counts.get(state, 0) + 1
+
+    gate_rows = []
+    for gate in gates:
+        view = build_view(gate, states.get(gate.id), installed=installed)
+        counts = keys_by_gate.get(gate.id, {})
+        gate_rows.append(
+            {
+                "id": gate.id,
+                "label": gate.label,
+                "lane": gate.lane,
+                "processor": gate.processor,
+                "enabled": view.enabled,
+                "ready": view.ready,
+                "state": view.state,
+                "keys": {"total": sum(counts.values()), "by_state": counts},
+            }
+        )
+
+    # Imported here: webapp imports this module, so a module-level import
+    # would be circular. At request time both modules are fully loaded.
+    from app.webapp import STATE
+
+    return web.json_response(
+        {
+            "commit": os.environ.get("RENDER_GIT_COMMIT", "").strip()[:7],
+            "polling": bool(STATE.get("polling")),
+            "adapters": installed,
+            "gates": gate_rows,
+            "canary": {
+                "rows_alive": len(canaries),
+                "env_configured": bool(settings.canary_cards.strip()),
+            },
+            "env": {
+                "STRIPE_SECRET_KEY": bool(settings.stripe_secret_key.get_secret_value()),
+                "STRIPE_API_KEYS": bool(settings.stripe_keys_raw.strip()),
+                "stripe_key_pool": len(settings.stripe_key_list()),
+                "ADYEN_API_KEY": bool(settings.adyen_api_key.get_secret_value()),
+                "CANARY_CARDS": bool(settings.canary_cards.strip()),
+            },
+        }
+    )
+
+
 def register(app: web.Application) -> None:
     app.router.add_get("/api/health", health)
     app.router.add_get("/api/status", status)
@@ -500,3 +583,4 @@ def register(app: web.Application) -> None:
     app.router.add_post("/api/report", report)
     app.router.add_get("/api/reflink", reflink)
     app.router.add_post("/api/admin/migrate", admin_migrate)
+    app.router.add_get("/api/admin/diagnostics", admin_diagnostics)

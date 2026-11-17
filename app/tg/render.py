@@ -130,8 +130,9 @@ def gates_text(lane: str, gates: list[GateView]) -> str:
     if not gates:
         lines.append("🚧 <i>No gate in this lane yet.</i>")
     for gate in gates:
-        if not gate.enabled:
-            lines.append(f"⚪ {esc(gate.label)} · <i>adapter pending</i>")
+        if not gate.ready:
+            reason = "disabled" if not gate.enabled else "no key · not runnable"
+            lines.append(f"⚪ {esc(gate.label)} · <i>{reason}</i>")
         elif gate.state == "OPEN":
             lines.append(f"🔴 {esc(gate.label)} · <i>open · still tappable</i>")
         else:
@@ -152,7 +153,8 @@ def detail_text(gate: GateView, keys: int, breaker: str, last_ok: datetime | Non
     avs = "yes" if gate.needs_postal else "no"
     amount = "SetupIntent" if gate.amount_cents == 0 else f"${gate.amount_cents / 100:.2f}"
     return (
-        f"🛡️ <b>{esc(gate.label)}</b> {dot(gate.state)} {esc(gate.state)}\n\n"
+        f"🛡️ <b>{esc(gate.label)}</b> {dot(gate.state)} {esc(gate.state)}\n"
+        f"{'🟢 ready' if gate.ready else '⚪ <i>no key — checks cannot run</i>'}\n\n"
         f"📊 p50 <b>{p50}</b> · p95 <b>{p95}</b> · ✅ <b>{success}</b> "
         f"({'real samples' if gate.p50_ms else 'no samples'})\n"
         f"🕐 last ok <b>{seconds_ago(last_ok)}</b> · 🔒 breaker <b>{esc(breaker)}</b> · "
@@ -381,7 +383,11 @@ def _range_line(record: BinRecord) -> str:
 
 
 def render_bin(
-    record: BinRecord, gates: list[GateView], now: datetime | None = None
+    record: BinRecord,
+    gates: list[GateView],
+    now: datetime | None = None,
+    *,
+    canary: bool = True,
 ) -> str:
     """The main BIN screen: identity, verdict, route, then evidence.
 
@@ -443,12 +449,17 @@ def render_bin(
             bullet = "🛡️" if index == 0 else "•"
             lines.append(f"{bullet} {_gate_line_html(gate)}")
     else:
-        lines.append("— <i>no healthy auth gate for this country</i>")
+        lines.append("— <i>no auth gate with a live key for this country</i>")
 
     lines.append("")
     lines.append(f"🔐 <b>3DS</b> · {fmt_3ds(record.r3ds, current)}")
     if record.r3ds.reads == 0 and record.r3ds.probe_reads > 0:
         lines.append(f"<i>{esc(PROBE_TOOLTIP)}</i>")
+    if not canary:
+        lines.append(
+            "<i>3DS measurement needs a canary card (CANARY_CARDS or the "
+            "canary table).</i>"
+        )
 
     iso2 = (record.iso2 or "?").upper()
     # TYPE is the parent of PREPAID / COMMERCIAL / DEBIT. If it is unknown the
@@ -630,11 +641,16 @@ def render_bin_gates(
     ]
     if not gates:
         lines.append("🚧 <i>No gate seeded yet.</i>")
-    for gate in sorted(gates, key=lambda item: (item.lane, item.state_rank, item.p50_ms or 9999)):
-        state = "⚪" if not gate.enabled else dot(gate.state)
+    ranked = sorted(
+        gates,
+        key=lambda item: (item.lane, not item.ready, item.state_rank, item.p50_ms or 9999),
+    )
+    for gate in ranked:
+        state = dot(gate.state) if gate.ready else "⚪"
+        note = "" if gate.ready else " · <i>no key</i>"
         lines.append(
             f"{state} <b>{esc(gate.label)}</b> · {esc(gate.lane)} · "
-            f"{fmt_cr(gate.cost_cr)} cr · {latency(gate.p50_ms)}"
+            f"{fmt_cr(gate.cost_cr)} cr · {latency(gate.p50_ms)}{note}"
         )
     return "\n".join(lines)
 
@@ -660,14 +676,16 @@ def render_bin_copy(record: BinRecord, gates: list[GateView], now: datetime | No
 
 
 def status_text(gates: list[GateView], now: datetime | None = None) -> str:
-    up = [g for g in gates if g.state == "HEALTHY"]
-    degraded = [g for g in gates if g.state in ("DEGRADED", "HALF_OPEN")]
-    open_gates = [g for g in gates if g.state == "OPEN"]
+    ready = [g for g in gates if g.ready]
+    blocked = [g for g in gates if not g.ready]
+    up = [g for g in ready if g.state == "HEALTHY"]
+    degraded = [g for g in ready if g.state in ("DEGRADED", "HALF_OPEN")]
+    open_gates = [g for g in ready if g.state == "OPEN"]
     lines = [
         "📊 <b>GATE STATUS</b> · <i>live</i>",
         "",
         f"🟢 <b>{len(up)} up</b> · 🟡 <b>{len(degraded)} degraded</b> · "
-        f"🔴 <b>{len(open_gates)} open</b>",
+        f"🔴 <b>{len(open_gates)} open</b> · ⚪ <b>{len(blocked)} no key</b>",
         "",
     ]
     for gate in degraded + open_gates:
@@ -675,10 +693,12 @@ def status_text(gates: list[GateView], now: datetime | None = None) -> str:
     for gate in up[:5]:
         success = f"{gate.success_pct:.1f}%" if gate.success_pct is not None else "—"
         lines.append(f"🟢 {esc(gate.label)} — {success} · {latency(gate.p50_ms)}")
+    for gate in blocked:
+        lines.append(f"⚪ {esc(gate.label)} — <i>no key configured</i>")
     lines.append("")
     lines.append(
-        "<blockquote>Degraded stays routable at full honesty. "
-        "Open stays visible with a reason.</blockquote>"
+        "<blockquote>Only a gate with a key can run; one without it is never "
+        "counted as healthy. Degraded stays routable at full honesty.</blockquote>"
     )
     return "\n".join(lines)
 

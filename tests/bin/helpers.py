@@ -19,6 +19,7 @@ def gate_view(
     p50: int | None = 1200,
     handles_3ds: bool = True,
     enabled: bool = True,
+    ready: bool = True,
 ) -> GateView:
     return GateView(
         id=gate_id,
@@ -39,6 +40,7 @@ def gate_view(
         key_country="US",
         blurb="",
         sort_hint=10,
+        ready=ready,
     )
 
 

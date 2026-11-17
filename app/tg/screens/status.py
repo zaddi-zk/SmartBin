@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import repo
 from app.routing.router import GateView, build_view
+from app.runtime import runtime
 from app.tg import keyboards as kb
 from app.tg import render
 
@@ -18,7 +19,10 @@ router = Router(name="status")
 async def views(session: AsyncSession) -> list[GateView]:
     gates = await repo.list_gates(session)
     states = await repo.gate_states(session)
-    return [build_view(gate, states.get(gate.id)) for gate in gates]
+    return [
+        build_view(gate, states.get(gate.id), installed=runtime().adapters.names)
+        for gate in gates
+    ]
 
 
 @router.message(Command("status"))

@@ -14,6 +14,7 @@ from app.config import Settings
 from app.db import repo
 from app.db.models import Proxy, User
 from app.routing.router import build_view, route
+from app.runtime import runtime
 from app.tg import keyboards as kb
 from app.tg import render
 from app.tg.guards import load_user, username
@@ -27,7 +28,10 @@ async def menu_view(
 ) -> tuple[str, InlineKeyboardMarkup]:
     gates = await repo.list_gates(session)
     states = await repo.gate_states(session)
-    views = [build_view(gate, states.get(gate.id)) for gate in gates]
+    views = [
+        build_view(gate, states.get(gate.id), installed=runtime().adapters.names)
+        for gate in gates
+    ]
     p50 = min(
         (view.p50_ms for view in views if view.p50_ms and view.state != "OPEN"),
         default=None,
@@ -103,13 +107,24 @@ async def auto_pick(
         return
     gates = await repo.list_gates(session)
     states = await repo.gate_states(session)
-    views = [build_view(gate, states.get(gate.id)) for gate in gates]
+    views = [
+        build_view(gate, states.get(gate.id), installed=runtime().adapters.names)
+        for gate in gates
+    ]
     candidates = route(views, "", "auth")
     if not candidates:
         if callback.message is not None:
+            if any(view.ready for view in views):
+                headline = "🚧 <b>NO HEALTHY GATE</b>"
+                body = "Every auth gate is open. 0 cr charged."
+            else:
+                headline = "⚪ <b>NO RUNNABLE GATE</b>"
+                body = (
+                    "No auth gate has a live key on this instance. "
+                    "0 cr charged."
+                )
             await callback.message.edit_text(
-                "🚧 <b>NO HEALTHY GATE</b>\n"
-                "<blockquote>Every auth gate is open. 0 cr charged.</blockquote>",
+                f"{headline}\n<blockquote>{body}</blockquote>",
                 reply_markup=kb.gate_hub(),
             )
         return

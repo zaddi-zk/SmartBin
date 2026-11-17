@@ -141,7 +141,7 @@ def _probe_free(record: BinRecord, now: datetime | None = None) -> bool:
     return 0 <= (current - moment).total_seconds() < 3600
 
 
-def bin_result(record: BinRecord, gates: list[GateView]) -> KB:
+def bin_result(record: BinRecord, gates: list[GateView], *, canary: bool = True) -> KB:
     """Section 17.7: exactly one copy button, and ▶️ is swapped for 🔄 when stale."""
     rows: list[list[B]] = []
     ranked = route(gates, record.iso2 or "", "auth")
@@ -159,7 +159,9 @@ def bin_result(record: BinRecord, gates: list[GateView]) -> KB:
                 )
             ]
         )
-    if record.r3ds.reads < 3:
+    # A measure button with no canary can only fail after a tap; the card says
+    # why it is absent instead.
+    if canary and record.r3ds.reads < 3:
         label = "🔐 Re-probe 3DS · free" if _probe_free(record) else "🔐 Measure 3DS · 1cr"
         rows.append([B(text=label, callback_data=f"bin:3ds:{record.bin}")])
     rows.append(
@@ -287,7 +289,7 @@ def admin_proxy() -> KB:
 
 def admin_gates(gates: list[GateView]) -> KB:
     rows = [
-        [B(text=f"{'🟢' if g.enabled else '⚪'} {g.label}", callback_data=f"adm:g:{g.id}")]
+        [B(text=f"{'🟢' if g.ready else '⚪'} {g.label}", callback_data=f"adm:g:{g.id}")]
         for g in gates
     ]
     rows.append([back("adm", "⬅️ Back")])

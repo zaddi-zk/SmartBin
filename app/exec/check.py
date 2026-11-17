@@ -110,7 +110,10 @@ class CheckExecutor:
     async def views(self, session: AsyncSession) -> list[GateView]:
         gates = await repo.list_gates(session)
         states = await repo.gate_states(session)
-        return [build_view(gate, states.get(gate.id)) for gate in gates]
+        return [
+            build_view(gate, states.get(gate.id), installed=self.adapters.names)
+            for gate in gates
+        ]
 
     async def probe(
         self,

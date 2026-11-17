@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bin.measure import MeasureResult, measure_3ds
+from app.bin.measure import MeasureResult, canary_available, measure_3ds
 from app.bin.model import BinRecord
 from app.bin.resolver import BinUnavailable
 from app.config import Settings
@@ -57,7 +57,9 @@ def _valid(raw: str) -> bool:
     return raw.isdigit() and 6 <= len(raw) <= 8
 
 
-async def show_bin(message: Message, session: AsyncSession, raw: str) -> None:
+async def show_bin(
+    message: Message, session: AsyncSession, raw: str, settings: Settings
+) -> None:
     if not _valid(raw):
         await message.answer("🔍 Send a 6–8 digit BIN.")
         return
@@ -67,8 +69,10 @@ async def show_bin(message: Message, session: AsyncSession, raw: str) -> None:
         await message.answer("⚠️ BIN lookup failed. Try again.")
         return
     gates = await _views(session)
+    canary = await canary_available(session, settings)
     await message.answer(
-        render.render_bin(record, gates), reply_markup=kb.bin_result(record, gates)
+        render.render_bin(record, gates, canary=canary),
+        reply_markup=kb.bin_result(record, gates, canary=canary),
     )
 
 
@@ -93,15 +97,19 @@ async def bin_new(callback: CallbackQuery, state: FSMContext) -> None:
 
 
 @router.message(Flow.await_bin, F.text)
-async def bin_text(message: Message, session: AsyncSession, state: FSMContext) -> None:
+async def bin_text(
+    message: Message, session: AsyncSession, state: FSMContext, settings: Settings
+) -> None:
     if message.text is None:
         return
     await state.clear()
-    await show_bin(message, session, message.text.strip())
+    await show_bin(message, session, message.text.strip(), settings)
 
 
 @router.callback_query(F.data.startswith("bin:show:"))
-async def bin_show(callback: CallbackQuery, session: AsyncSession) -> None:
+async def bin_show(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings
+) -> None:
     if callback.data is None or callback.message is None:
         return
     raw = callback.data.split(":", 2)[2]
@@ -111,13 +119,17 @@ async def bin_show(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.message.edit_text("⚠️ BIN record is unavailable.")
         return
     gates = await _views(session)
+    canary = await canary_available(session, settings)
     await callback.message.edit_text(
-        render.render_bin(record, gates), reply_markup=kb.bin_result(record, gates)
+        render.render_bin(record, gates, canary=canary),
+        reply_markup=kb.bin_result(record, gates, canary=canary),
     )
 
 
 @router.callback_query(F.data.startswith("bin:ref:"))
-async def bin_refresh(callback: CallbackQuery, session: AsyncSession) -> None:
+async def bin_refresh(
+    callback: CallbackQuery, session: AsyncSession, settings: Settings
+) -> None:
     if callback.data is None or callback.message is None:
         return
     raw = callback.data.split(":", 2)[2]
@@ -127,8 +139,10 @@ async def bin_refresh(callback: CallbackQuery, session: AsyncSession) -> None:
         await callback.message.answer("⚠️ Refresh failed; keeping the cached record.")
         return
     gates = await _views(session)
+    canary = await canary_available(session, settings)
     await callback.message.edit_text(
-        render.render_bin(record, gates), reply_markup=kb.bin_result(record, gates)
+        render.render_bin(record, gates, canary=canary),
+        reply_markup=kb.bin_result(record, gates, canary=canary),
     )
 
 
@@ -149,16 +163,28 @@ async def bin_run(
     if gate is None:
         await callback.message.answer("🚧 That gate no longer exists.")
         return
-    if not gate.enabled or runtime().adapters.get(gate.processor) is None:
+    if not gate.enabled:
         await callback.message.answer(
-            f"🚧 <b>{render.esc(gate.label)}</b> is not live yet. 0 cr charged."
+            f"🚧 <b>{render.esc(gate.label)}</b> is disabled. 0 cr charged."
+        )
+        return
+    if runtime().adapters.get(gate.processor) is None:
+        hint = (
+            "Set STRIPE_API_KEY or STRIPE_API_KEYS, then retry."
+            if gate.processor == "stripe"
+            else f"Configure a key for the {gate.processor} adapter, then retry."
+        )
+        await callback.message.answer(
+            f"🚧 <b>{render.esc(gate.label)}</b> has no live key "
+            f"(processor <code>{render.esc(gate.processor)}</code>). {hint} "
+            "0 cr charged."
         )
         return
     await repo.set_sticky_gate(session, user.id, gate.id)
     await state.set_state(Flow.await_card)
     await state.update_data(gate_id=gate.id, lane=gate.lane)
     state_row = await repo.ensure_gate_state(session, gate.id)
-    view = build_view(gate, state_row)
+    view = build_view(gate, state_row, installed=runtime().adapters.names)
     await callback.message.edit_text(render.armed_text(view), reply_markup=kb.armed(view))
 
 
@@ -194,8 +220,10 @@ async def bin_3ds(
     if fresh is None:
         return
     gates = await _views(session)
+    canary = await canary_available(session, settings)
     await callback.message.edit_text(
-        render.render_bin(fresh, gates), reply_markup=kb.bin_result(fresh, gates)
+        render.render_bin(fresh, gates, canary=canary),
+        reply_markup=kb.bin_result(fresh, gates, canary=canary),
     )
 
 
@@ -356,7 +384,9 @@ async def bin_mass(callback: CallbackQuery, session: AsyncSession, state: FSMCon
     gates = await _views(session)
     ranked = route(gates, record.iso2 or "", "auth")
     if not ranked:
-        await callback.message.answer("🚧 No healthy auth gate for mass right now.")
+        await callback.message.answer(
+            "🚧 No runnable auth gate for mass right now. 0 cr charged."
+        )
         return
     gate = ranked[0]
     await state.set_state(Flow.await_file)

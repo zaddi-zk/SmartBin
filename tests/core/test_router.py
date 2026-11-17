@@ -76,6 +76,22 @@ def test_disabled_gate_never_routed() -> None:
     assert "auth_off" not in {view.id for view in route(views(), "US", "auth")}
 
 
+def test_gate_without_an_adapter_is_not_ready_or_routed() -> None:
+    view = build_view(
+        gate("auth_stripe"), state("auth_stripe", "HEALTHY", 1000), installed=()
+    )
+    assert view.ready is False
+    assert route([view], "US", "auth") == []
+
+
+def test_gate_is_ready_when_its_processor_is_installed() -> None:
+    view = build_view(
+        gate("auth_stripe"), state("auth_stripe", "HEALTHY", 1000), installed=("stripe",)
+    )
+    assert view.ready is True
+    assert [item.id for item in route([view], "US", "auth")] == ["auth_stripe"]
+
+
 def test_sibling_is_a_different_gate() -> None:
     other = sibling(views(), "auth", "auth_stripe")
     assert other is not None

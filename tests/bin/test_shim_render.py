@@ -308,6 +308,10 @@ _REPLACED = {
     "test_main_screen_has_one_confidence_chip_and_no_field_rows",
     "test_type_unknown_forces_all_three_children",
     "test_type_unknown_wins_over_stale_children",
+    # Readiness honesty is platform state (adapter registry, canary table); the
+    # frozen legacy port has no such model and would only disagree.
+    "test_no_canary_hides_the_measure_button_and_explains_why",
+    "test_gate_without_a_key_is_labelled_and_never_offered",
 }
 
 

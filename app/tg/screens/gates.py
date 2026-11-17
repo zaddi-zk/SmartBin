@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.db import repo
 from app.routing.router import GateView, build_view, route
+from app.runtime import runtime
 from app.tg import keyboards as kb
 from app.tg import render
 from app.tg.guards import load_user
@@ -23,7 +24,10 @@ LANES = {"auth", "charge", "hit", "kill"}
 async def lane_views(session: AsyncSession, lane: str) -> list[GateView]:
     gates = await repo.list_gates(session, lane)
     states = await repo.gate_states(session)
-    return [build_view(gate, states.get(gate.id)) for gate in gates]
+    return [
+        build_view(gate, states.get(gate.id), installed=runtime().adapters.names)
+        for gate in gates
+    ]
 
 
 @router.callback_query(F.data.startswith("hub:"))
@@ -102,7 +106,11 @@ async def action(
         await callback.message.edit_text(
             body,
             reply_markup=kb.gate_detail(
-                build_view(gate, await repo.ensure_gate_state(session, gate.id))
+                build_view(
+                    gate,
+                    await repo.ensure_gate_state(session, gate.id),
+                    installed=runtime().adapters.names,
+                )
             ),
         )
         return
@@ -133,8 +141,17 @@ async def nearest(
     views = await lane_views(session, gate.lane)
     candidates = route(views, "", gate.lane)
     if not candidates:
+        if any(view.ready for view in views):
+            headline = "🔴 <b>ALL GATES OPEN</b>"
+            body = "0 cr charged. Try another lane."
+        else:
+            headline = "⚪ <b>NO RUNNABLE GATE</b>"
+            body = (
+                "No gate in this lane has a live key on this instance. "
+                "0 cr charged."
+            )
         await callback.message.edit_text(
-            "🔴 <b>ALL GATES OPEN</b>\n<blockquote>0 cr charged. Try another lane.</blockquote>",
+            f"{headline}\n<blockquote>{body}</blockquote>",
             reply_markup=kb.gate_hub(),
         )
         return

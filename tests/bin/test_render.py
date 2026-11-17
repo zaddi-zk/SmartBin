@@ -394,3 +394,26 @@ def test_provenance_and_evidence_use_the_same_record() -> None:
     assert "EVIDENCE" in evidence
     assert "PROVENANCE" in provenance
     assert rec.bin in evidence and rec.bin in provenance
+
+
+def test_no_canary_hides_the_measure_button_and_explains_why() -> None:
+    now = datetime.now(UTC)
+    rec = record(reads=0)
+    text = render.render_bin(rec, [gate_view()], now, canary=False)
+    assert "needs a canary card" in text
+    labels = buttons(kb.bin_result(rec, [gate_view()], canary=False))
+    assert not any("3DS" in label for label in labels)
+
+
+def test_gate_without_a_key_is_labelled_and_never_offered() -> None:
+    now = datetime.now(UTC)
+    rec = record()
+    blocked = gate_view("auth_stripe", "Stripe Auth", ready=False)
+    text = render.render_bin(rec, [blocked], now)
+    assert "no auth gate with a live key" in text
+    listing = render.render_bin_gates(rec, [blocked])
+    assert "⚪ <b>Stripe Auth</b>" in listing
+    assert "no key" in listing
+    status = render.status_text([blocked], now)
+    assert "⚪ <b>1 no key</b>" in status
+    assert "🟢 <b>0 up</b>" in status

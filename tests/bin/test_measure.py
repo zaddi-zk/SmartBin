@@ -10,7 +10,12 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from app.bin.measure import MeasureResult, first_3ds_gate, measure_3ds
+from app.bin.measure import (
+    MeasureResult,
+    canary_available,
+    first_3ds_gate,
+    measure_3ds,
+)
 from app.bin.resolver import BinResolver
 from app.config import Settings
 from app.core.verdicts import Verdict
@@ -208,3 +213,30 @@ async def test_insufficient_credits_does_not_probe(session: AsyncSession) -> Non
     assert result is MeasureResult.NO_CREDITS
     assert executor.probe_calls == 0
     assert Decimal(user.credits) == Decimal("0")
+
+
+async def test_canary_available_reflects_env_and_table(session: AsyncSession) -> None:
+    assert await canary_available(session, settings(canary="")) is False
+    assert await canary_available(session, settings()) is True
+
+
+async def test_blocked_messages_say_zero_was_charged(session: AsyncSession) -> None:
+    user = await setup_user(session)
+    plain = FakeExecutor(
+        Verdict.LIVE_3DS, gates=[gate_view("auth_plain", handles_3ds=False)]
+    )
+    _result, detail = await measure_3ds(
+        session, user, record(), plain, BinResolver(settings()), settings()
+    )
+    assert "0 cr charged" in detail
+
+    three_ds = FakeExecutor(Verdict.LIVE_3DS)
+    _result, detail = await measure_3ds(
+        session,
+        user,
+        record(),
+        three_ds,
+        BinResolver(settings(canary="")),
+        settings(canary=""),
+    )
+    assert "0 cr charged" in detail

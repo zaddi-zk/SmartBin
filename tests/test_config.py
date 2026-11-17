@@ -101,6 +101,14 @@ def test_readiness_properties_track_secrets() -> None:
     assert ready.braintree_ready is True
 
 
+def test_stripe_ready_accepts_the_multi_key_pool() -> None:
+    # The adapter reads the pool per request, so STRIPE_API_KEYS alone must
+    # register it. This is the bug that left the only seeded gates keyless.
+    pool = build(stripe_keys_raw="sk_live_one,sk_live_two")
+    assert pool.stripe_ready is True
+    assert pool.stripe_key_list() == ["sk_live_one", "sk_live_two"]
+
+
 def test_secrets_returns_secret_str_instances() -> None:
     settings = build(stripe_secret_key="sk_live_x")
     secrets = settings.secrets()

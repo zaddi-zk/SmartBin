@@ -44,7 +44,11 @@ def init_data(user_id: int = 7, *, age_s: int = 0, token: str = TOKEN) -> str:
 
 
 def fake_runtime() -> SimpleNamespace:
-    return SimpleNamespace(settings=settings())
+    # Production runtime always carries the adapter registry; screens use it to
+    # decide whether a gate can actually run.
+    return SimpleNamespace(
+        settings=settings(), adapters=SimpleNamespace(names=("stripe",))
+    )
 
 
 @pytest.fixture
@@ -358,3 +362,38 @@ async def test_admin_migrate_runs_the_import(
     assert response.status == 200
     assert payload["read"] == 3 and payload["created"] == 2
     assert calls == ["postgresql://legacy:secret@example.invalid/postgres"]
+
+
+# --- admin diagnostics ------------------------------------------------------
+async def test_diagnostics_is_admin_only(scope: None) -> None:
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.get(
+            "/api/admin/diagnostics", headers={"X-Telegram-Init-Data": init_data(7)}
+        )
+    assert response.status == 403
+
+
+async def test_diagnostics_reports_readiness_without_secrets(
+    scope: None, session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await seed_gates(session)
+    monkeypatch.setenv("RENDER_GIT_COMMIT", "abcdef123456")
+    async with TestClient(TestServer(build_app())) as client:
+        response = await client.get(
+            "/api/admin/diagnostics", headers={"X-Telegram-Init-Data": init_data(42)}
+        )
+        payload = await response.json()
+        text = await response.text()
+
+    assert response.status == 200
+    assert payload["commit"] == "abcdef1"
+    assert payload["adapters"] == ["stripe"]
+    by_id = {gate["id"]: gate for gate in payload["gates"]}
+    # Only Stripe is installed in this fake runtime, so only Stripe is runnable.
+    assert by_id["auth_stripe"]["ready"] is True
+    assert by_id["auth_adyen"]["ready"] is False
+    assert by_id["auth_stripe"]["keys"]["total"] == 0
+    assert payload["canary"]["rows_alive"] == 0
+    # Presence booleans only: no key material may leak into the payload.
+    assert isinstance(payload["env"]["STRIPE_API_KEYS"], bool)
+    assert "sk_live" not in text and "sk_test" not in text

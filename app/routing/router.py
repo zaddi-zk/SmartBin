@@ -6,7 +6,7 @@ The sticky gate is tried first; a fault auto-advances to the next candidate.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -35,6 +35,11 @@ class GateView:
     key_country: str
     blurb: str
     sort_hint: int
+    # A gate is ready only when it is enabled *and* its processor adapter is
+    # installed, which today means a key is configured. A green gate that
+    # cannot execute is a lie the user pays for in taps, so routing never
+    # offers one and every screen labels it.
+    ready: bool = True
 
     @property
     def is_open(self) -> bool:
@@ -45,7 +50,15 @@ class GateView:
         return STATE_RANK.get(self.state, 3)
 
 
-def build_view(gate: Gate, state: GateStateRow | None) -> GateView:
+def build_view(
+    gate: Gate, state: GateStateRow | None, *, installed: Collection[str] | None = None
+) -> GateView:
+    """Project a gate row for screens and routing.
+
+    ``installed`` is the set of processor adapters that actually exist in this
+    process. Omitting it keeps the old behaviour, which is only safe in tests:
+    every production call site passes ``runtime().adapters.names``.
+    """
     return GateView(
         id=gate.id,
         label=gate.label,
@@ -67,6 +80,7 @@ def build_view(gate: Gate, state: GateStateRow | None) -> GateView:
         key_country=gate.key_country,
         blurb=gate.blurb,
         sort_hint=gate.sort_hint,
+        ready=gate.enabled and (installed is None or gate.processor in installed),
     )
 
 
@@ -87,7 +101,7 @@ def route(
     candidates = [
         gate
         for gate in gates
-        if gate.enabled and gate.lane == lane and matches_country(gate, card_iso2)
+        if gate.ready and gate.lane == lane and matches_country(gate, card_iso2)
     ]
     candidates = [gate for gate in candidates if gate.state != "OPEN"]
 

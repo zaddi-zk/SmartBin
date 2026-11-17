@@ -98,9 +98,17 @@ async def adm_gates(callback: CallbackQuery, session: AsyncSession, settings: Se
         return
     gates = await repo.list_gates(session)
     states = await repo.gate_states(session)
-    views = [build_view(gate, states.get(gate.id)) for gate in gates]
+    views = [
+        build_view(gate, states.get(gate.id), installed=runtime().adapters.names)
+        for gate in gates
+    ]
+    ready = sum(1 for view in views if view.ready)
     if callback.message is not None:
-        await callback.message.edit_text("🏷️ <b>GATES</b>", reply_markup=kb.admin_gates(views))
+        await callback.message.edit_text(
+            f"🏷️ <b>GATES</b> · ready <b>{ready}</b>/{len(views)}\n"
+            "<blockquote>⚪ = enabled, but no key or adapter on this instance.</blockquote>",
+            reply_markup=kb.admin_gates(views),
+        )
 
 
 @router.callback_query(F.data.startswith("adm:g:"))
@@ -150,11 +158,14 @@ async def adm_gate(callback: CallbackQuery, session: AsyncSession, settings: Set
             )
 
     state_row = await repo.ensure_gate_state(session, gate.id)
-    view = build_view(gate, state_row)
+    view = build_view(gate, state_row, installed=runtime().adapters.names)
+    keys = await repo.keys_for_gate(session, gate.id)
+    readiness = "🟢 ready" if view.ready else "⚪ no live key (adapter not registered)"
     await callback.message.edit_text(
         f"🏷️ <b>{render.esc(gate.label)}</b>\n"
         f"processor <code>{render.esc(gate.processor)}</code> · lane {render.esc(gate.lane)}\n"
-        f"enabled <b>{gate.enabled}</b> · state <b>{render.esc(state_row.state)}</b>",
+        f"enabled <b>{gate.enabled}</b> · state <b>{render.esc(state_row.state)}</b>\n"
+        f"🔑 keys <b>{len(keys)}</b> · {readiness}",
         reply_markup=kb.admin_gate(view),
     )
 

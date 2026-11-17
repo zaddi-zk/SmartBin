@@ -57,6 +57,10 @@ services:
         sync: false  # One or more keys, comma/newline separated; rotated on 401/403/429
       - key: STRIPE_API_KEY
         sync: false  # Legacy single key; merged with STRIPE_API_KEYS when both are set
+      # A5-sized test card used only to measure 3DS on a BIN. Without it the
+      # "Measure 3DS" button is hidden instead of failing after a tap.
+      - key: CANARY_CARDS
+        sync: false  # pan|mm|yy|cvv|postal, one per line; no real customer cards
       - key: STRIPE_TEST_MODE
         value: "0"  # LIVE MODE for real checks
       - key: FREE_BINS_PER_DAY

@@ -21,7 +21,7 @@ from app.core import ledger
 from app.core.parse import Card, CardError
 from app.core.verdicts import Verdict, is_fault
 from app.db import repo
-from app.db.models import LedgerEntry, User
+from app.db.models import CanaryCard, LedgerEntry, User
 from app.routing.router import GateView, route
 
 if TYPE_CHECKING:
@@ -59,6 +59,15 @@ def _parse_lines(raw: str) -> list[Card]:
     return cards
 
 
+def _row_card(row: CanaryCard) -> Card | None:
+    try:
+        return Card.parse(
+            f"{row.pan_enc}|{row.mm}|{row.yy}|{row.cvv_enc}|{row.postal}"
+        )
+    except CardError:
+        return None
+
+
 async def canary_card_for(
     session: AsyncSession, iso2: str | None, settings: Settings
 ) -> Card | None:
@@ -66,12 +75,23 @@ async def canary_card_for(
     if not rows:
         rows = await repo.canary_cards(session)
     for row in rows:
-        try:
-            return Card.parse(f"{row.pan_enc}|{row.mm}|{row.yy}|{row.cvv_enc}|{row.postal}")
-        except CardError:
-            continue
+        card = _row_card(row)
+        if card is not None:
+            return card
     cards = _parse_lines(settings.canary_cards)
     return cards[0] if cards else None
+
+
+async def canary_available(session: AsyncSession, settings: Settings) -> bool:
+    """Whether a usable canary exists, mirroring ``canary_card_for``.
+
+    The card screen uses this to omit the measure button instead of offering a
+    tap that can only end in "no canary card configured".
+    """
+    rows = await repo.canary_cards(session)
+    if rows:
+        return any(_row_card(row) is not None for row in rows)
+    return bool(_parse_lines(settings.canary_cards))
 
 
 def _hour() -> int:
@@ -88,11 +108,18 @@ async def measure_3ds(
 ) -> tuple[MeasureResult, str]:
     gate = first_3ds_gate(await executor.views(session), record.iso2)
     if gate is None:
-        return MeasureResult.NO_GATE, "No 3DS-capable auth gate for this country."
+        return (
+            MeasureResult.NO_GATE,
+            "No auth gate with a live key and 3DS support for this country. 0 cr charged.",
+        )
 
     card = await canary_card_for(session, record.iso2, settings)
     if card is None:
-        return MeasureResult.NO_CANARY, "No canary card configured for this country."
+        return (
+            MeasureResult.NO_CANARY,
+            "No usable canary card configured (CANARY_CARDS or the canary table). "
+            "0 cr charged.",
+        )
 
     idem = f"p3ds:{record.bin}:{_hour()}"
     charged = (
