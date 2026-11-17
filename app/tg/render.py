@@ -14,7 +14,7 @@ from app.core.parse import Card, fmt_cr
 from app.core.verdicts import Verdict
 from app.exec.check import CheckOutcome
 from app.exec.kill import KillOutcome
-from app.routing.router import GateView, route
+from app.routing.router import GateView, matches_country, route
 
 BIN_SCREEN_VERSION = "7.3.0"
 # AVS is only meaningful where the issuer/network actually returns a postal
@@ -76,6 +76,18 @@ def seconds_ago(moment: datetime | None, now: datetime | None = None) -> str:
     return f"{delta // 86_400}d"
 
 
+def blocked_reason(gate: GateView) -> str:
+    """Why a gate cannot run, in the gate's own words when it knows.
+
+    "no key" is only one of the ways a gate is unrunnable. A processor that
+    refuses this account says so, and that is not something a user can fix by
+    re-arming.
+    """
+    if gate.blocked:
+        return gate.blocked
+    return "disabled" if not gate.enabled else "no key"
+
+
 def gate_button(gate: GateView) -> str:
     if gate.state == "OPEN":
         return f"🔴 {gate.label} · open"
@@ -131,8 +143,7 @@ def gates_text(lane: str, gates: list[GateView]) -> str:
         lines.append("🚧 <i>No gate in this lane yet.</i>")
     for gate in gates:
         if not gate.ready:
-            reason = "disabled" if not gate.enabled else "no key · not runnable"
-            lines.append(f"⚪ {esc(gate.label)} · <i>{reason}</i>")
+            lines.append(f"⚪ {esc(gate.label)} · <i>{esc(blocked_reason(gate))}</i>")
         elif gate.state == "OPEN":
             lines.append(f"🔴 {esc(gate.label)} · <i>open · still tappable</i>")
         else:
@@ -152,9 +163,11 @@ def detail_text(gate: GateView, keys: int, breaker: str, last_ok: datetime | Non
     three_ds = "handled" if gate.handles_3ds else "not handled"
     avs = "yes" if gate.needs_postal else "no"
     amount = "SetupIntent" if gate.amount_cents == 0 else f"${gate.amount_cents / 100:.2f}"
+    status = "🟢 ready" if gate.ready else f"⚪ <i>{esc(blocked_reason(gate))}</i>"
+    suffix = "" if gate.ready else " — checks cannot run"
     return (
         f"🛡️ <b>{esc(gate.label)}</b> {dot(gate.state)} {esc(gate.state)}\n"
-        f"{'🟢 ready' if gate.ready else '⚪ <i>no key — checks cannot run</i>'}\n\n"
+        f"{status}{suffix}\n\n"
         f"📊 p50 <b>{p50}</b> · p95 <b>{p95}</b> · ✅ <b>{success}</b> "
         f"({'real samples' if gate.p50_ms else 'no samples'})\n"
         f"🕐 last ok <b>{seconds_ago(last_ok)}</b> · 🔒 breaker <b>{esc(breaker)}</b> · "
@@ -458,7 +471,20 @@ def render_bin(
             bullet = "🛡️" if index == 0 else "•"
             lines.append(f"{bullet} {_gate_line_html(gate)}")
     else:
-        lines.append("— <i>no auth gate with a live key for this country</i>")
+        # Say the real reason. "no live key" is wrong when the processor
+        # itself refuses this account, and it sends people to fix a key.
+        blocked_why = {
+            blocked_reason(gate)
+            for gate in gates
+            if gate.lane == "auth" and matches_country(gate, record.iso2 or "")
+        }
+        if blocked_why == {"no key"}:
+            lines.append("— <i>no auth gate with a live key for this country</i>")
+        elif blocked_why:
+            joined = esc(" · ".join(sorted(blocked_why)))
+            lines.append(f"— <i>no auth gate can run · {joined}</i>")
+        else:
+            lines.append("— <i>no auth gate for this country</i>")
 
     lines.append("")
     lines.append(f"🔐 <b>3DS</b> · {fmt_3ds(record.r3ds, current)}")
@@ -656,7 +682,7 @@ def render_bin_gates(
     )
     for gate in ranked:
         state = dot(gate.state) if gate.ready else "⚪"
-        note = "" if gate.ready else " · <i>no key</i>"
+        note = "" if gate.ready else f" · <i>{esc(blocked_reason(gate))}</i>"
         lines.append(
             f"{state} <b>{esc(gate.label)}</b> · {esc(gate.lane)} · "
             f"{fmt_cr(gate.cost_cr)} cr · {latency(gate.p50_ms)}{note}"
@@ -694,7 +720,7 @@ def status_text(gates: list[GateView], now: datetime | None = None) -> str:
         "📊 <b>GATE STATUS</b> · <i>live</i>",
         "",
         f"🟢 <b>{len(up)} up</b> · 🟡 <b>{len(degraded)} degraded</b> · "
-        f"🔴 <b>{len(open_gates)} open</b> · ⚪ <b>{len(blocked)} no key</b>",
+        f"🔴 <b>{len(open_gates)} open</b> · ⚪ <b>{len(blocked)} not runnable</b>",
         "",
     ]
     for gate in degraded + open_gates:
@@ -703,11 +729,12 @@ def status_text(gates: list[GateView], now: datetime | None = None) -> str:
         success = f"{gate.success_pct:.1f}%" if gate.success_pct is not None else "—"
         lines.append(f"🟢 {esc(gate.label)} — {success} · {latency(gate.p50_ms)}")
     for gate in blocked:
-        lines.append(f"⚪ {esc(gate.label)} — <i>no key configured</i>")
+        lines.append(f"⚪ {esc(gate.label)} — <i>{esc(blocked_reason(gate))}</i>")
     lines.append("")
     lines.append(
-        "<blockquote>Only a gate with a key can run; one without it is never "
-        "counted as healthy. Degraded stays routable at full honesty.</blockquote>"
+        "<blockquote>Only a gate that can actually dispatch is counted as "
+        "healthy. An absent key and a processor that refuses this account both "
+        "read as not runnable. Degraded stays routable at full honesty.</blockquote>"
     )
     return "\n".join(lines)
 

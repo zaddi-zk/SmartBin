@@ -315,6 +315,9 @@ _REPLACED = {
     # Provider-message surfacing lives in the platform's CheckOutcome; the
     # ported renderer takes a legacy result dict with no such field.
     "test_result_text_shows_the_provider_message_on_a_gate_fault",
+    # A processor that refuses the account is platform state the frozen legacy
+    # port has no notion of; it would only ever say "no key".
+    "test_a_processor_blocked_gate_says_why_not_no_key",
 }
 
 

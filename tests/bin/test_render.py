@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from app.bin import confidence
@@ -417,8 +418,29 @@ def test_gate_without_a_key_is_labelled_and_never_offered() -> None:
     assert "⚪ <b>Stripe Auth</b>" in listing
     assert "no key" in listing
     status = render.status_text([blocked], now)
-    assert "⚪ <b>1 no key</b>" in status
+    assert "⚪ <b>1 not runnable</b>" in status
     assert "🟢 <b>0 up</b>" in status
+    assert "no key" in status
+
+
+def test_a_processor_blocked_gate_says_why_not_no_key() -> None:
+    # A gate Stripe refuses for this account must not be described as merely
+    # missing a key: re-arming would not help and the note would be wrong.
+    now = datetime.now(UTC)
+    rec = record()
+    blocked = gate_view("auth_stripe", "Stripe Auth", ready=False)
+    blocked = replace(
+        blocked, blocked="processor refuses server-side card data"
+    )
+
+    text = render.render_bin(rec, [blocked], now)
+    assert "processor refuses server-side card data" in text
+    listing = render.render_bin_gates(rec, [blocked])
+    assert "processor refuses server-side card data" in listing
+    assert "no key" not in listing
+    detail = render.detail_text(blocked, 1, "CLOSED", None)
+    assert "processor refuses server-side card data" in detail
+    assert "no key" not in detail
 
 
 def test_result_text_shows_the_provider_message_on_a_gate_fault() -> None:

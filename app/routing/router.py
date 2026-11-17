@@ -8,11 +8,25 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Final
 
 from app.db.models import Gate, GateStateRow
 
 STATE_RANK = {"HEALTHY": 0, "DEGRADED": 1, "HALF_OPEN": 2, "OPEN": 3}
+
+# Failures that no retry and no key rotation can fix: the provider refuses this
+# account or this request shape. A gate in this state must stop advertising
+# itself, because every tap costs the user time and produces nothing.
+PERMANENT_BLOCKERS: Final[dict[str, str]] = {
+    "raw_card_data_blocked": "processor refuses server-side card data",
+    "adapter_missing": "no adapter installed",
+}
+
+# How long a permanent blocker is honoured after its last observation. It is
+# re-observed by the next attempt, so this only bounds a stale row.
+BLOCK_TTL_S = 900
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,6 +54,8 @@ class GateView:
     # cannot execute is a lie the user pays for in taps, so routing never
     # offers one and every screen labels it.
     ready: bool = True
+    # Why this gate cannot run at all, when the cause is not a missing key.
+    blocked: str = ""
 
     @property
     def is_open(self) -> bool:
@@ -59,6 +75,10 @@ def build_view(
     process. Omitting it keeps the old behaviour, which is only safe in tests:
     every production call site passes ``runtime().adapters.names``.
     """
+    last_error = (state.last_err_code or "") if state is not None else ""
+    blocked = PERMANENT_BLOCKERS.get(last_error, "")
+    if blocked and not _blocker_is_fresh(state):
+        blocked = ""
     return GateView(
         id=gate.id,
         label=gate.label,
@@ -80,8 +100,33 @@ def build_view(
         key_country=gate.key_country,
         blurb=gate.blurb,
         sort_hint=gate.sort_hint,
-        ready=gate.enabled and (installed is None or gate.processor in installed),
+        # A permanently blocked gate is not ready: offering it only produces
+        # a fault notice after the user has spent a tap.
+        ready=gate.enabled
+        and not blocked
+        and (installed is None or gate.processor in installed),
+        blocked=blocked,
     )
+
+
+def blocker_until(now: datetime | None = None) -> datetime:
+    """When a just-observed permanent block stops being trusted."""
+    return (now or datetime.now(UTC)) + timedelta(seconds=BLOCK_TTL_S)
+
+
+def _blocker_is_fresh(state: GateStateRow | None) -> bool:
+    """Trust a recorded block until its expiry, an admin probe, or its age.
+
+    ``record_sample`` sets ``next_probe_at`` when it records a permanent
+    blocker, so this is a real timestamp rather than an inference. The admin
+    ``probe`` action clears ``last_err_code`` and re-arms either way.
+    """
+    if state is None or not state.last_err_code:
+        return False
+    expiry = state.next_probe_at
+    if expiry is None:
+        return True
+    return datetime.now(UTC) < expiry
 
 
 def matches_country(gate: GateView, iso2: str) -> bool:

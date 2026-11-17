@@ -147,6 +147,9 @@ async def adm_gate(callback: CallbackQuery, session: AsyncSession, settings: Set
             state = await repo.ensure_gate_state(session, gate.id)
             state.state = "HALF_OPEN"
             state.next_probe_at = datetime.now(UTC)
+            # An admin probe is also the way to clear a permanent blocker: the
+            # account may have been fixed, and the next attempt re-observes it.
+            state.last_err_code = None
             runtime().executor.breaker(gate.id).force_probe()
             await log_action(
                 session,

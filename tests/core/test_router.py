@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from app.db.models import Gate, GateStateRow
-from app.routing.router import build_view, route, sibling
+from app.routing.router import blocker_until, build_view, route, sibling
 
 
 def gate(
@@ -96,3 +97,43 @@ def test_sibling_is_a_different_gate() -> None:
     other = sibling(views(), "auth", "auth_stripe")
     assert other is not None
     assert other.id != "auth_stripe"
+
+
+def blocked_state(
+    gate_id: str, code: str, expiry: datetime | None
+) -> GateStateRow:
+    return GateStateRow(
+        gate_id=gate_id,
+        state="HEALTHY",
+        p50_ms=1000,
+        samples=3,
+        last_err_code=code,
+        next_probe_at=expiry,
+    )
+
+
+def test_a_processor_block_stops_the_gate_from_routing() -> None:
+    # Every tap on a gate the processor refuses is a wasted tap and a scary
+    # fault notice, so routing must not offer it at all.
+    row = blocked_state("auth_stripe", "raw_card_data_blocked", blocker_until())
+    view = build_view(gate("auth_stripe"), row, installed=("stripe",))
+    assert view.ready is False
+    assert view.blocked == "processor refuses server-side card data"
+    assert route([view], "US", "auth") == []
+
+
+def test_a_stale_block_expires_so_a_fixed_account_recovers() -> None:
+    expired = datetime.now(UTC) - timedelta(seconds=1)
+    row = blocked_state("auth_stripe", "raw_card_data_blocked", expired)
+    view = build_view(gate("auth_stripe"), row, installed=("stripe",))
+    assert view.ready is True
+    assert view.blocked == ""
+
+
+def test_an_ordinary_key_failure_is_not_a_permanent_block() -> None:
+    # `invalid_api_key` benches a key; the gate itself stays routable so another
+    # key in the pool can serve the next check.
+    row = blocked_state("auth_stripe", "invalid_api_key", None)
+    view = build_view(gate("auth_stripe"), row, installed=("stripe",))
+    assert view.ready is True
+    assert view.blocked == ""

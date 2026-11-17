@@ -29,7 +29,13 @@ from app.keys.manager import KeyManager
 from app.logging import log_check
 from app.providers.base import Adapter, AdapterRegistry, Key, RawResult
 from app.proxy.pool import ProxyPool
-from app.routing.router import GateView, build_view, route
+from app.routing.router import (
+    PERMANENT_BLOCKERS,
+    GateView,
+    blocker_until,
+    build_view,
+    route,
+)
 
 NO_BYTES = 599
 
@@ -502,7 +508,13 @@ class CheckExecutor:
         state.samples = health.total
         # Record *why* the dispatch failed, not the verdict name: an operator
         # reading the board needs `raw_card_data_blocked`, not `gate_fault`.
-        state.last_err_code = None if ok else (code or verdict.value.lower())[:64]
+        failure = (code or verdict.value.lower())[:64]
+        state.last_err_code = None if ok else failure
+        # A permanent block stops routing this gate until it expires, so the
+        # user is never invited to tap something that cannot work.
+        state.next_probe_at = (
+            blocker_until() if not ok and failure in PERMANENT_BLOCKERS else None
+        )
         if ok:
             state.last_ok_at = _now()
 
