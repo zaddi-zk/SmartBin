@@ -73,6 +73,26 @@ THREE_DS: Final[frozenset[str]] = frozenset(
     {"authentication_required", "authentication_not_handled", "challenge_required"}
 )
 
+# Our own request was rejected, so the card was never looked at. This must
+# never be read as a decline: the user's card and credit are untouched, and the
+# sequence above is what has to change. Stripe answers these with 400 or 403.
+GATE_FAULT: Final[frozenset[str]] = frozenset(
+    {
+        "invalid_request_error",
+        "setup_intent_invalid_parameter",
+        "payment_intent_invalid_parameter",
+        "parameter_invalid_integer",
+        "parameter_missing",
+        "parameter_unknown",
+        "parameter_invalid_empty",
+        "resource_missing",
+        "invalid_number",  # Stripe's "PAN sent server-side" refusal
+        "request_not_allowed",
+        "setup_intent_unexpected_state",
+        "payment_intent_unexpected_state",
+    }
+)
+
 KEY_DEAD: Final[frozenset[str]] = frozenset(
     {
         "invalid_api_key",
@@ -111,7 +131,7 @@ _MESSAGE_MAP: Final[tuple[tuple[re.Pattern[str], str], ...]] = (
     (re.compile(r"declin", re.I), "declined"),
 )
 
-_GENERIC_CODES: Final[frozenset[str]] = DEAD | LIVE | RETRY | THREE_DS | KEY_DEAD
+_GENERIC_CODES: Final[frozenset[str]] = DEAD | LIVE | RETRY | THREE_DS | KEY_DEAD | GATE_FAULT
 
 
 def extract_decline_code(body: Mapping[str, object]) -> str:
@@ -188,10 +208,14 @@ def classify(status: int, body: Mapping[str, object]) -> tuple[Verdict, str]:
         return Verdict.APPROVED, "ok"
     if status in (429, 500, 502, 503, 504):
         return Verdict.RETRY, f"http_{status}"
-    if status in (401, 403):
-        return Verdict.KEY_DEAD, code or "unauthorized"
+    # An error envelope arrives before the status shortcut, because Stripe
+    # reports both a rejected request and an unusable key with 403.
+    if code in GATE_FAULT:
+        return Verdict.GATE_FAULT, code
     if code in KEY_DEAD:
         return Verdict.KEY_DEAD, code
+    if status in (401, 403):
+        return Verdict.KEY_DEAD, code or "unauthorized"
     if code in THREE_DS:
         return Verdict.LIVE_3DS, code
     if code in DEAD:

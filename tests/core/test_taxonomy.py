@@ -158,3 +158,31 @@ def test_extract_message_and_param_are_empty_without_an_error() -> None:
     assert extract_message({"id": "seti_1"}) == ""
     assert extract_param({"id": "seti_1"}) == ""
     assert extract_message({"error": "boom"}) == ""
+
+
+def test_request_rejection_is_a_gate_fault_never_a_card_verdict() -> None:
+    # Stripe refuses a server-side PAN with `invalid_number` on a 402. The card
+    # was never looked at, so this may never become DEAD.
+    body = {
+        "error": {
+            "type": "invalid_request_error",
+            "code": "invalid_number",
+            "message": "Sending credit card numbers directly to the Stripe API is unsafe.",
+        }
+    }
+    assert classify(402, body) == (Verdict.GATE_FAULT, "invalid_number")
+
+
+def test_invalid_parameter_is_a_gate_fault_on_a_400() -> None:
+    body = {"error": {"type": "invalid_request_error", "code": "setup_intent_invalid_parameter"}}
+    assert classify(400, body) == (Verdict.GATE_FAULT, "setup_intent_invalid_parameter")
+
+
+def test_a_403_that_names_a_request_problem_is_not_a_dead_key() -> None:
+    # Benching every key on a configuration mistake would take the gate down.
+    body = {"error": {"type": "invalid_request_error", "code": "request_not_allowed"}}
+    assert classify(403, body) == (Verdict.GATE_FAULT, "request_not_allowed")
+
+
+def test_unknown_402_stays_dead_because_it_may_be_a_card_answer() -> None:
+    assert classify(402, {"error": {"code": "weird_new_code"}})[0] is Verdict.DEAD
