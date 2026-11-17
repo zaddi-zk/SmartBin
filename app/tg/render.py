@@ -199,6 +199,15 @@ def result_text(outcome: CheckOutcome, *, card_line: str = "") -> str:
     if outcome.decline_code:
         lines.append(f"🏷️ decline <code>{esc(outcome.decline_code)}</code>")
     lines.append(f"🟠 <code>{esc(outcome.code or 'none')}</code>")
+    if outcome.provider_detail and outcome.verdict in (
+        Verdict.RETRY,
+        Verdict.GATE_FAULT,
+        Verdict.INCONCLUSIVE,
+        Verdict.KEY_DEAD,
+    ):
+        lines.append(
+            f"<blockquote>⚠️ <i>provider says</i> · {esc(outcome.provider_detail)}</blockquote>"
+        )
     if outcome.provider_ref:
         lines.append(f"🆔 <code>{esc(outcome.provider_ref[:24])}</code>")
     if outcome.avs or outcome.cvc or outcome.three_ds:

@@ -396,4 +396,7 @@ async def test_diagnostics_reports_readiness_without_secrets(
     assert payload["canary"]["rows_alive"] == 0
     # Presence booleans only: no key material may leak into the payload.
     assert isinstance(payload["env"]["STRIPE_API_KEYS"], bool)
+    # The 3DS redirect target is configuration, not a secret: an operator needs
+    # to see which URL Stripe will bounce a challenge back to.
+    assert payload["env"]["STRIPE_RETURN_URL"].startswith("https://")
     assert "sk_live" not in text and "sk_test" not in text

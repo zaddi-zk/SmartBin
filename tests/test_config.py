@@ -114,3 +114,16 @@ def test_secrets_returns_secret_str_instances() -> None:
     secrets = settings.secrets()
     assert len(secrets) == 12
     assert all(isinstance(item, SecretStr) for item in secrets)
+
+
+def test_return_url_defaults_to_the_public_service_url() -> None:
+    assert build().stripe_return_url == "https://smartbin-eurr.onrender.com/"
+
+
+def test_return_url_must_be_absolute() -> None:
+    # A relative or blank value is not something Stripe accepts on a confirmed
+    # intent, and one bad env var must not turn every check into a 400.
+    assert build(stripe_return_url="  /back  ").stripe_return_url == (
+        "https://smartbin-eurr.onrender.com/"
+    )
+    assert build(stripe_return_url="https://x.test/ok").stripe_return_url == "https://x.test/ok"

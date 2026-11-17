@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from app.core.taxonomy import classify, derive_decline_code, extract_code, is_known_code
+from app.core.taxonomy import (
+    classify,
+    derive_decline_code,
+    extract_code,
+    extract_message,
+    extract_param,
+    is_known_code,
+)
 from app.core.verdicts import Verdict, charge_for, is_fault, is_terminal
 
 
@@ -133,3 +140,21 @@ def test_known_retry_code_on_402() -> None:
 
 def test_unexpected_status_is_retry() -> None:
     assert classify(418, {}) == (Verdict.RETRY, "http_418")
+
+
+def test_extract_message_and_param_from_error_envelope() -> None:
+    body = {
+        "error": {
+            "code": "setup_intent_invalid_parameter",
+            "param": "return_url",
+            "message": "  You must   provide a return_url.\n",
+        }
+    }
+    assert extract_message(body) == "You must provide a return_url."
+    assert extract_param(body) == "return_url"
+
+
+def test_extract_message_and_param_are_empty_without_an_error() -> None:
+    assert extract_message({"id": "seti_1"}) == ""
+    assert extract_param({"id": "seti_1"}) == ""
+    assert extract_message({"error": "boom"}) == ""

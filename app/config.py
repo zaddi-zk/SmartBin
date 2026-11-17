@@ -142,6 +142,10 @@ class Settings(BaseSettings):
     stripe_api_version: str = "2024-06-20"
     stripe_currency: str = "usd"
     stripe_api_base: str = "https://api.stripe.com"
+    # 3DS redirect target. Stripe requires a return_url when a confirmed card
+    # needs authentication; the challenge URL is what the checker reads, so a
+    # static page is enough. STRIPE_RETURN_URL overrides it.
+    stripe_return_url: str = "https://smartbin-eurr.onrender.com/"
 
     adyen_api_key: SecretStr = Field(
         default=SecretStr(""), validation_alias=AliasChoices("ADYEN_API_KEY", "GATE_ADYEN_API_KEY")
@@ -251,6 +255,17 @@ class Settings(BaseSettings):
         if value.startswith("postgresql+asyncpg"):
             value = value.replace("sslmode=", "ssl=")
         return value
+
+    @field_validator("stripe_return_url", mode="after")
+    @classmethod
+    def _absolute_return_url(cls, value: str) -> str:
+        # Stripe rejects a relative or blank return_url on a confirmed intent,
+        # which would turn every check into a 400. Fall back to the public
+        # service URL rather than send something the API cannot accept.
+        candidate = value.strip()
+        if not candidate.startswith(("http://", "https://")):
+            return "https://smartbin-eurr.onrender.com/"
+        return candidate
 
     @property
     def legacy_source_url(self) -> str:

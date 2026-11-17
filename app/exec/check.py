@@ -8,6 +8,7 @@ zero by construction.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,7 +21,7 @@ from app.config import Settings
 from app.core import ledger
 from app.core.breaker import Breaker, BreakerState
 from app.core.parse import Card
-from app.core.taxonomy import classify, extract_decline_code
+from app.core.taxonomy import classify, extract_decline_code, extract_message, extract_param
 from app.core.verdicts import Verdict, charge_for, is_fault, is_terminal
 from app.db import repo
 from app.db.models import User
@@ -31,6 +32,26 @@ from app.proxy.pool import ProxyPool
 from app.routing.router import GateView, build_view, route
 
 NO_BYTES = 599
+
+# Provider messages are shown to users, so a card-shaped digit run is redacted
+# even though Stripe itself never echoes a full PAN.
+_PAN_RE = re.compile(r"(?<!\d)(?:\d[ -]?){12,18}\d(?!\d)")
+
+
+def provider_detail(body: dict[str, object] | object) -> str:
+    """``message (param x)`` from an error envelope, for logs and screens.
+
+    Unknown parameters are a bug in our request, so the exact word the
+    processor used has to be readable without redeploying a debug build.
+    """
+    if not isinstance(body, dict):
+        return ""
+    message = extract_message(body)
+    if not message:
+        return ""
+    message = _PAN_RE.sub("[redacted]", message)
+    param = extract_param(body)
+    return f"{message} (param {param})" if param else message
 
 
 def _now() -> datetime:
@@ -50,7 +71,7 @@ class Attempt:
     avs: str = ""
     cvc: str = ""
     three_ds: str = ""
-    raw_error: str = ""
+    provider_detail: str = ""
 
 
 @dataclass(slots=True)
@@ -72,6 +93,7 @@ class CheckOutcome:
     balance: Decimal = Decimal("0")
     check_id: int | None = None
     reason: str = ""
+    provider_detail: str = ""
     attempts: list[Attempt] = field(default_factory=list)
 
     @property
@@ -167,6 +189,7 @@ class CheckExecutor:
             latency_ms=latency,
             verdict=verdict.value,
             lane="3ds_probe",
+            detail=provider_detail(raw.body),
         )
         await self.record_sample(session, gate.id, latency, verdict)
         return verdict, code
@@ -248,6 +271,7 @@ class CheckExecutor:
                 api_version=adapter.version,
                 latency_ms=latency,
                 verdict=verdict.value,
+                detail=provider_detail(raw.body),
             )
             # Passive, authoritative 3DS evidence. Only a real dispatch with a
             # terminal 3DS answer counts; RETRY/KEY_DEAD/GATE_FAULT/INCONCLUSIVE
@@ -268,7 +292,7 @@ class CheckExecutor:
                 avs=raw.avs,
                 cvc=raw.cvc,
                 three_ds=self._three_ds(verdict, raw),
-                raw_error=str(raw.body)[:300],
+                provider_detail=provider_detail(raw.body),
             )
             attempts.append(attempt)
             await self.record_sample(session, gate.id, latency, verdict)
@@ -291,6 +315,7 @@ class CheckExecutor:
                 code=last_code,
                 reason="every candidate gate faulted; 0 cr charged",
                 pan_masked=card.masked,
+                provider_detail=attempts[-1].provider_detail if attempts else "",
                 attempts=attempts,
             )
 
@@ -360,6 +385,7 @@ class CheckExecutor:
             debited=debited,
             balance=balance,
             check_id=check.id,
+            provider_detail=chosen.provider_detail,
             attempts=attempts,
         )
 

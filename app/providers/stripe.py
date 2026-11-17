@@ -1,10 +1,11 @@
 """Stripe adapter (section 9) — SetupIntent for auth, manual capture for kill.
 
 Pinned API version, livemode asserted on ``/v1/balance`` before a key can go
-READY. Card declines arrive as HTTP 200 with ``last_setup_error`` /
-``last_payment_error``, so the adapter re-shapes them into the error envelope
-the taxonomy understands. That reshaping is provider knowledge, not verdict
-logic.
+READY. A check is two calls: create the card PaymentMethod, then confirm the
+intent with ``payment_method=pm_…``. Card declines arrive as HTTP 200 with
+``last_setup_error`` / ``last_payment_error``, so the adapter re-shapes them
+into the error envelope the taxonomy understands. That reshaping is provider
+knowledge, not verdict logic.
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ class StripeAdapter:
         self.version = settings.stripe_api_version
         self.currency = settings.stripe_currency
         self.base_url = (base_url or settings.stripe_api_base).rstrip("/")
+        self.return_url = settings.stripe_return_url
 
     # --- plumbing -----------------------------------------------------------
     def _headers(self, key: Key, idem: str) -> dict[str, str]:
@@ -43,20 +45,60 @@ class StripeAdapter:
 
     def _card_form(self, card: Card) -> dict[str, str]:
         form = {
-            "payment_method_data[type]": "card",
-            "payment_method_data[card][number]": card.number,
-            "payment_method_data[card][exp_month]": str(card.exp_month),
-            "payment_method_data[card][exp_year]": str(card.exp_year),
-            "payment_method_data[card][cvc]": card.cvv,
-            "expand[]": "payment_method",
+            "type": "card",
+            "card[number]": card.number,
+            "card[exp_month]": str(card.exp_month),
+            "card[exp_year]": str(card.exp_year),
+            "card[cvc]": card.cvv,
         }
         if card.postal:
-            form["payment_method_data[billing_details][address][postal_code]"] = card.postal
+            form["billing_details[address][postal_code]"] = card.postal
         if card.country:
-            form["payment_method_data[billing_details][address][country]"] = card.country
+            form["billing_details[address][country]"] = card.country
         if card.holder:
-            form["payment_method_data[billing_details][name]"] = card.holder
+            form["billing_details[name]"] = card.holder
         return form
+
+    def _confirm_form(self) -> dict[str, str]:
+        """Fields every confirmed card intent needs.
+
+        ``return_url`` is not cosmetic: a confirmed card that the issuer sends
+        to 3DS cannot produce a challenge without somewhere to return to.
+        Pinning ``payment_method_types`` keeps the account's automatic
+        payment-method configuration out of what this call does.
+        """
+        return {
+            "return_url": self.return_url,
+            "payment_method_types[]": "card",
+            "confirm": "true",
+            "expand[]": "payment_method",
+        }
+
+    async def _payment_method(
+        self, client: httpx.AsyncClient, key: Key, card: Card
+    ) -> tuple[str, RawResult | None]:
+        """Create the card PaymentMethod, one round trip, before confirming.
+
+        Card data goes in its own request instead of inline
+        ``payment_method_data``: Stripe validates the card there and answers
+        with a normal decline envelope (``incorrect_number``, ``expired_card``)
+        that the taxonomy already knows, and the confirmed intent stays a plain
+        ``payment_method=pm_…`` call.
+        """
+        response = await client.post(
+            f"{self.base_url}/v1/payment_methods",
+            headers=self._headers(key, f"pm-{uuid4()}"),
+            data=self._card_form(card),
+        )
+        body = _json(response)
+        ref = str(body.get("id") or "")
+        if response.status_code >= 400 or not ref:
+            return "", RawResult(
+                response.status_code if response.status_code >= 400 else 502,
+                body,
+                provider_ref=ref,
+            )
+        return ref, None
 
     # --- adapter contract ---------------------------------------------------
     async def auth(
@@ -67,15 +109,18 @@ class StripeAdapter:
         amount_cents: int,
         capture: bool,
     ) -> RawResult:
+        ref, failure = await self._payment_method(client, key, card)
+        if failure is not None:
+            return failure
+
+        payload = self._confirm_form()
+        payload["payment_method"] = ref
         if capture:
-            payload = self._card_form(card)
             payload.update(
                 {
                     "amount": str(max(50, amount_cents)),
                     "currency": self.currency,
                     "capture_method": "manual",
-                    "confirm": "true",
-                    "usage": "off_session",
                 }
             )
             response = await client.post(
@@ -85,8 +130,8 @@ class StripeAdapter:
             )
             return self._map_intent(response)
 
-        payload = self._card_form(card)
-        payload.update({"confirm": "true", "usage": "off_session"})
+        # ``usage`` is left out: a SetupIntent already defaults to
+        # off_session, so sending it adds a parameter that can only be wrong.
         response = await client.post(
             f"{self.base_url}/v1/setup_intents",
             headers=self._headers(key, f"auth-{uuid4()}"),

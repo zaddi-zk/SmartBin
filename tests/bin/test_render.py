@@ -6,6 +6,8 @@ from datetime import UTC, datetime, timedelta
 
 from app.bin import confidence
 from app.bin.model import FieldSource
+from app.core.verdicts import Verdict
+from app.exec.check import CheckOutcome
 from app.tg import keyboards as kb
 from app.tg import render
 
@@ -417,3 +419,18 @@ def test_gate_without_a_key_is_labelled_and_never_offered() -> None:
     status = render.status_text([blocked], now)
     assert "⚪ <b>1 no key</b>" in status
     assert "🟢 <b>0 up</b>" in status
+
+
+def test_result_text_shows_the_provider_message_on_a_gate_fault() -> None:
+    outcome = CheckOutcome(
+        verdict=Verdict.GATE_FAULT,
+        gate_id="auth_stripe",
+        gate_label="Stripe Auth",
+        code="bad_request:setup_intent_invalid_parameter",
+        pan_masked="424242******4242",
+        provider_detail="You must provide a return_url. (param return_url)",
+    )
+    text = render.result_text(outcome)
+    assert "provider says" in text
+    assert "You must provide a return_url." in text
+    assert "param return_url" in text

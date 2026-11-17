@@ -124,6 +124,31 @@ def extract_decline_code(body: Mapping[str, object]) -> str:
     return ""
 
 
+def extract_param(body: Mapping[str, object]) -> str:
+    """The request field the processor blamed, when it names one."""
+    raw_error = body.get("error")
+    if isinstance(raw_error, Mapping):
+        value = raw_error.get("param")
+        if isinstance(value, str) and value.strip():
+            return value.strip()[:64]
+    return ""
+
+
+def extract_message(body: Mapping[str, object]) -> str:
+    """The processor's own sentence about a failure.
+
+    Error codes are a taxonomy input; the message is what tells an operator
+    which parameter to fix. It is surfaced verbatim, always after a
+    ``provider says`` label so it cannot be mistaken for our own verdict.
+    """
+    raw_error = body.get("error")
+    if isinstance(raw_error, Mapping):
+        value = raw_error.get("message")
+        if isinstance(value, str) and value.strip():
+            return " ".join(value.split())[:200]
+    return ""
+
+
 def extract_code(body: Mapping[str, object]) -> str:
     """Pull the most specific provider code out of an error envelope."""
     raw_error = body.get("error")

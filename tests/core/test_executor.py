@@ -10,7 +10,7 @@ from app.core.verdicts import Verdict
 from app.db import repo
 from app.db.models import Bin3dsPassiveRow, Bin3dsRow, BinHitsRow
 from app.db.seed import seed_gates
-from app.exec.check import CheckExecutor
+from app.exec.check import CheckExecutor, provider_detail
 from app.keys.manager import KeyManager
 from app.providers.base import AdapterRegistry, Key, RawResult
 from app.proxy.pool import ProxyPool
@@ -140,3 +140,39 @@ async def test_dead_is_terminal_and_free(session: AsyncSession) -> None:
     assert hits is not None and hits.attempts == 1 and hits.approved == 0
     # A decline is not a 3DS read.
     assert await session.get(Bin3dsPassiveRow, CARD.bin8) is None
+
+
+async def test_gate_fault_carries_the_provider_message(session: AsyncSession) -> None:
+    # The screen and the log must show Stripe's own sentence: the code alone
+    # ("bad_request:setup_intent_invalid_parameter") never names the field.
+    adapter = FakeAdapter(
+        RawResult(
+            400,
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "setup_intent_invalid_parameter",
+                    "param": "usage",
+                    "message": "You cannot use usage=off_session here.",
+                }
+            },
+        )
+    )
+    user, executor = await setup(session, adapter)
+    outcome = await executor.run(session, user=user, card=CARD, lane="auth")
+    assert outcome.verdict is Verdict.GATE_FAULT
+    assert outcome.debited == Decimal("0")
+    assert outcome.provider_detail == "You cannot use usage=off_session here. (param usage)"
+
+
+def test_provider_detail_redacts_card_shaped_digits() -> None:
+    body = {
+        "error": {
+            "message": "card 4242424242424242 is invalid",
+            "param": "card[number]",
+        }
+    }
+    detail = provider_detail(body)
+    assert "4242 4242" not in detail
+    assert "4242424242424242" not in detail
+    assert "[redacted]" in detail

@@ -312,6 +312,9 @@ _REPLACED = {
     # frozen legacy port has no such model and would only disagree.
     "test_no_canary_hides_the_measure_button_and_explains_why",
     "test_gate_without_a_key_is_labelled_and_never_offered",
+    # Provider-message surfacing lives in the platform's CheckOutcome; the
+    # ported renderer takes a legacy result dict with no such field.
+    "test_result_text_shows_the_provider_message_on_a_gate_fault",
 }
 
 
