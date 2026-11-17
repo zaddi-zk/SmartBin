@@ -1,13 +1,14 @@
-"""Keep the bot profile's monthly-user line current.
+"""Bot profile text.
 
-Telegram maps the two profile fields like this:
+Telegram exposes two profile fields to the Bot API:
 
-* long description (``setMyDescription``) — the line **under the bot name**
-* short description (``setMyShortDescription``) — the "(i) Description" row
+* ``setMyDescription`` — "What can this bot do?" in an empty chat
+* ``setMyShortDescription`` — the "(i) Description" row and the t.me preview
 
-The legacy bot published the user count under the name and kept the tagline
-in the Description row. That is the layout restored here: the count is live,
-the tagline is fixed.
+The line **under the bot name** is the bot's *About text*. It is not exposed by
+the Bot API; only @BotFather's ``/setabouttext`` changes it. This module keeps
+the two API fields at the brand text that was there before, so it never fights
+the About line or leaves a stale count in the wrong place.
 """
 
 from __future__ import annotations
@@ -17,36 +18,28 @@ import asyncio
 import structlog
 from aiogram import Bot
 
-from app.db import repo
-from app.db.session import session_scope
-
 log = structlog.get_logger("tg.description")
 
 UPDATE_INTERVAL = 3600  # seconds between profile refreshes
 LANGUAGES: tuple[str | None, ...] = (None, "en")
 
+# "What can this bot do?" in an empty chat.
+LONG_DESCRIPTION = "CCs🔪🔪🔪🔥"
 # The "(i) Description" row and the public t.me share preview.
 SHORT_DESCRIPTION = "CC Checker & Killer 🔪"
 
 
-def profile_text(monthly: int) -> str:
-    """The line under the bot name. Matches the legacy wording."""
-    return f"{monthly} monthly users"
+async def update_description(bot: Bot) -> str:
+    """Restore the two API-managed profile fields. Returns the long text.
 
-
-async def update_description(bot: Bot, monthly: int | None = None) -> str:
-    """Publish the live count under the name and restore the tagline.
-
-    Returns the count line. A Telegram failure is logged and never raised:
-    the profile text is cosmetic and must not break a tick.
+    A Telegram failure is logged and never raised: cosmetic text must not
+    break a tick.
     """
-    if monthly is None:
-        async with session_scope() as session:
-            monthly = await repo.monthly_active(session)
-    text = profile_text(monthly)
     for language in LANGUAGES:
         try:
-            await bot.set_my_description(description=text, language_code=language)
+            await bot.set_my_description(
+                description=LONG_DESCRIPTION, language_code=language
+            )
         except Exception as exc:
             log.warning(
                 "event=description_failed",
@@ -63,7 +56,7 @@ async def update_description(bot: Bot, monthly: int | None = None) -> str:
                 language=language or "default",
                 error=str(exc),
             )
-    return text
+    return LONG_DESCRIPTION
 
 
 async def description_tick(
@@ -72,7 +65,7 @@ async def description_tick(
     while not stop.is_set():
         try:
             text = await update_description(bot)
-            log.info("event=description_updated", under_name=text, row=SHORT_DESCRIPTION)
+            log.info("event=description_updated", long=text, short=SHORT_DESCRIPTION)
         except Exception as exc:
             # A background tick must never kill the bot.
             log.warning("event=description_tick_failed", error=str(exc))

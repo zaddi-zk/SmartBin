@@ -1,10 +1,19 @@
-"""Bot profile: the count goes under the name, the tagline stays in the row."""
+"""Bot profile: only the two API-managed fields, at fixed brand text.
+
+The line under the bot name is the About text, which the Bot API cannot touch.
+These tests pin the two fields it *can* write so a stale count can never end up
+in either of them again.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
-from app.tg.description import SHORT_DESCRIPTION, profile_text, update_description
+from app.tg.description import (
+    LONG_DESCRIPTION,
+    SHORT_DESCRIPTION,
+    update_description,
+)
 
 
 class FakeBot:
@@ -23,23 +32,20 @@ class FakeBot:
         self.short.append((language_code, short_description))
 
 
-async def test_profile_text_matches_the_legacy_wording() -> None:
-    assert profile_text(19) == "19 monthly users"
-
-
-async def test_count_goes_under_the_name_and_tagline_in_the_row() -> None:
-    bot = FakeBot()
-    text = await update_description(bot, monthly=19)
-
-    assert text == "19 monthly users"
-    # Long description = under the bot name.
-    assert bot.long == [(None, "19 monthly users"), ("en", "19 monthly users")]
-    # Short description = the "(i) Description" row.
-    assert bot.short == [
-        (None, "CC Checker & Killer 🔪"),
-        ("en", "CC Checker & Killer 🔪"),
-    ]
+def test_defaults_are_brand_text_without_a_count() -> None:
+    assert LONG_DESCRIPTION == "CCs🔪🔪🔪🔥"
     assert SHORT_DESCRIPTION == "CC Checker & Killer 🔪"
+    assert "monthly" not in LONG_DESCRIPTION.lower()
+    assert "monthly" not in SHORT_DESCRIPTION.lower()
+
+
+async def test_writes_both_fields_in_both_languages() -> None:
+    bot = FakeBot()
+    text = await update_description(bot)
+
+    assert text == LONG_DESCRIPTION
+    assert bot.long == [(None, LONG_DESCRIPTION), ("en", LONG_DESCRIPTION)]
+    assert bot.short == [(None, SHORT_DESCRIPTION), ("en", SHORT_DESCRIPTION)]
 
 
 async def test_a_telegram_failure_does_not_raise() -> None:
@@ -50,4 +56,4 @@ async def test_a_telegram_failure_does_not_raise() -> None:
         async def set_my_short_description(self, **kwargs: Any) -> None:
             raise RuntimeError("telegram down")
 
-    assert await update_description(BadBot(), monthly=1) == "1 monthly users"
+    assert await update_description(BadBot()) == LONG_DESCRIPTION
