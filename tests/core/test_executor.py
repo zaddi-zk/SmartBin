@@ -14,6 +14,7 @@ from app.exec.check import CheckExecutor, provider_detail
 from app.keys.manager import KeyManager
 from app.providers.base import AdapterRegistry, Key, RawResult
 from app.proxy.pool import ProxyPool
+from app.routing.router import blocker_until
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CARD = Card.parse("4242424242424242|11|29|716")
@@ -186,3 +187,23 @@ async def test_gate_state_records_why_a_dispatch_failed(session: AsyncSession) -
     await executor.run(session, user=user, card=CARD, lane="auth")
     state = await repo.ensure_gate_state(session, "auth_stripe")
     assert state.last_err_code == "raw_card_data_blocked"
+
+
+async def test_a_blocked_gate_explains_itself_when_routing_is_empty(
+    session: AsyncSession,
+) -> None:
+    # Without this, a blocked gate produced "no gate for this lane/country",
+    # which reads as a missing gate rather than a processor that refuses us.
+    adapter = FakeAdapter(RawResult(200, {"status": "succeeded"}))
+    user, executor = await setup(session, adapter)
+    state = await repo.ensure_gate_state(session, "auth_stripe")
+    state.last_err_code = "raw_card_data_blocked"
+    state.blocked_until = blocker_until()
+    await session.flush()
+
+    outcome = await executor.run(session, user=user, card=CARD, lane="auth")
+    assert outcome.verdict is Verdict.GATE_FAULT
+    assert outcome.code == "raw_card_data_blocked"
+    assert outcome.debited == Decimal("0")
+    assert "Stripe Auth" in outcome.reason
+    assert "refuses server-side card data" in outcome.reason

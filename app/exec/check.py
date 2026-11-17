@@ -34,6 +34,7 @@ from app.routing.router import (
     GateView,
     blocker_until,
     build_view,
+    matches_country,
     route,
 )
 
@@ -211,14 +212,29 @@ class CheckExecutor:
         bin_iso2: str = "",
         amount_cents: int | None = None,
     ) -> CheckOutcome:
-        candidates = route(await self.views(session), bin_iso2, lane, gate_id)
+        views = await self.views(session)
+        candidates = route(views, bin_iso2, lane, gate_id)
         if not candidates:
+            # Say which gates exist and why none can run. "no gate for this
+            # lane/country" hid the fact that a gate was there but blocked.
+            blocked = [
+                gate
+                for gate in views
+                if gate.lane == lane and matches_country(gate, bin_iso2) and gate.blocked
+            ]
+            if blocked:
+                why = " · ".join(f"{gate.label}: {gate.blocked}" for gate in blocked)
+                reason = f"no runnable gate · {why}"
+            else:
+                reason = "no gate for this lane/country"
             return CheckOutcome(
                 verdict=Verdict.GATE_FAULT,
-                gate_id="",
-                gate_label="",
-                code="gate_unavailable",
-                reason="no gate for this lane/country",
+                gate_id=blocked[0].id if blocked else "",
+                gate_label=blocked[0].label if blocked else "",
+                code="raw_card_data_blocked"
+                if any("refuses server-side" in gate.blocked for gate in blocked)
+                else "gate_unavailable",
+                reason=reason,
                 pan_masked=card.masked,
             )
 
