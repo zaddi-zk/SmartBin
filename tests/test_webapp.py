@@ -103,8 +103,22 @@ async def test_root_serves_the_mini_app() -> None:
 async def test_healthz_stays_json() -> None:
     async with TestClient(TestServer(build_app())) as client:
         response = await client.get("/healthz")
-        assert response.status == 200
-        assert await response.json() == {"service": "smart-bin", "status": "ok"}
+        payload = await response.json()
+
+    assert response.status == 200
+    # Uptime monitors only care about these two; the rest is deploy proof.
+    assert payload["service"] == "smart-bin"
+    assert payload["status"] == "ok"
+    assert set(payload) == {"service", "status", "commit", "polling"}
+
+
+def test_healthz_reports_polling_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.webapp import STATE, mark_polling
+
+    mark_polling(True)
+    assert STATE["polling"] is True
+    mark_polling(False)
+    assert STATE["polling"] is False
 
 
 # --- initData ---------------------------------------------------------------

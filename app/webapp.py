@@ -35,6 +35,19 @@ def page_html() -> str:
     return INDEX_PATH.read_text(encoding="utf-8")
 
 
+# Process state for /healthz. The web server runs in the same process as the
+# poller, so "serving HTTP" alone does not prove the bot is receiving updates.
+STATE: dict[str, object] = {"polling": False}
+
+
+def mark_polling(active: bool) -> None:
+    STATE["polling"] = active
+
+
+def _commit() -> str:
+    return os.environ.get("RENDER_GIT_COMMIT", "").strip()[:7]
+
+
 def build_app() -> web.Application:
     app = web.Application()
     html = page_html()
@@ -43,7 +56,17 @@ def build_app() -> web.Application:
         return web.Response(text=html, content_type="text/html")
 
     async def health(_: web.Request) -> web.Response:
-        return web.json_response({"service": SERVICE_NAME, "status": "ok"})
+        return web.json_response(
+            {
+                "service": SERVICE_NAME,
+                "status": "ok",
+                # The exact commit Render built, so a deploy is verifiable from
+                # outside instead of guessed from dashboard timing.
+                "commit": _commit(),
+                # A bot that serves HTTP but stopped polling is not healthy.
+                "polling": STATE["polling"],
+            }
+        )
 
     async def favicon(_: web.Request) -> web.Response:
         return web.Response(status=204)

@@ -6,6 +6,14 @@ services:
     plan: free  # $0/mo - budget conscious (can go negative if needed)
     branch: main
     autoDeploy: true
+    # One poller per token. A second instance makes Telegram answer 409
+    # ("terminated by other getUpdates request") and splits updates between
+    # them. Never scale this service past one instance.
+    numInstances: 1
+    # Gives Render a real health signal, and keeps the old instance alive until
+    # this one answers /healthz. The app also binds the port before its slow
+    # boot work and delays the first poll so the two never fight over getUpdates.
+    healthCheckPath: /healthz
     buildCommand: |
       python -m venv .venv
       . .venv/bin/activate

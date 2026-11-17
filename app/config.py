@@ -83,6 +83,18 @@ class Settings(BaseSettings):
     )
     log_level: str = "INFO"
 
+    # --- polling (one bot token, one poller) --------------------------------
+    # Render keeps the old instance alive until the new one is healthy, so two
+    # pollers can briefly hold the same token and Telegram answers 409
+    # ("terminated by other getUpdates request"). Waiting a few seconds after
+    # boot lets the old SIGTERM shutdown release the session first.
+    poll_start_delay_s: float = Field(
+        default=5.0,
+        validation_alias=AliasChoices("POLL_START_DELAY_S", "BOT_START_DELAY_S"),
+    )
+    # Attempts to start polling before the process exits. 0 = no retry.
+    poll_retries: int = 5
+
     # --- policy -------------------------------------------------------------
     canary_interval_s: int = 60
     canary_jitter_s: int = 8
@@ -215,6 +227,17 @@ class Settings(BaseSettings):
         if value and not re.fullmatch(r"[a-z_][a-z0-9_]*", value):
             raise ValueError("DB_SCHEMA must be a plain lowercase identifier")
         return value
+
+    @field_validator("poll_start_delay_s", mode="after")
+    @classmethod
+    def _clamp_start_delay(cls, value: float) -> float:
+        """A negative or huge delay would either skip the stagger or stall boot."""
+        return min(60.0, max(0.0, value))
+
+    @field_validator("poll_retries", mode="after")
+    @classmethod
+    def _clamp_poll_retries(cls, value: int) -> int:
+        return min(20, max(0, value))
 
     @field_validator("db_url", mode="after")
     @classmethod
