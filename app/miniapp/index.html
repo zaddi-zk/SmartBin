@@ -435,7 +435,7 @@
                     </div>
                     <div class="result-row"><span class="result-label">📡 API Status</span><span class="result-value" id="apiStatus">--</span></div>
                     <div class="result-row"><span class="result-label">⚡ Avg Latency</span><span class="result-value" id="avgLatency">--</span></div>
-                    <div class="result-row"><span class="result-label">🔄 Canary (24h)</span><span class="result-value" id="canaryStatus">--</span></div>
+                    <div class="result-row"><span class="result-label">🔄 Samples (24h)</span><span class="result-value" id="canaryStatus">--</span></div>
                 </div>
                 <button class="btn btn-secondary" onclick="refreshStatus()">🔄 Refresh Status</button>
             </section>
@@ -683,9 +683,12 @@
                 document.getElementById('engineStatus').className = 'result-status ' + (data.status === 'healthy' ? 'status-live' : 'status-dead');
                 document.getElementById('apiStatus').textContent = data.status === 'healthy' ? '✅ Operational' : '⚠️ Degraded';
                 
-                if (data.canary_24h) {
-                    const successRate = Math.round((data.canary_24h.successful / data.canary_24h.total) * 100);
-                    document.getElementById('canaryStatus').textContent = `${successRate}% (${data.canary_24h.successful}/${data.canary_24h.total})`;
+                if (data.samples_24h) {
+                    // Observed dispatches only. No samples must not read as 100%.
+                    const { ok, total } = data.samples_24h;
+                    document.getElementById('canaryStatus').textContent = total
+                        ? `${Math.round((ok / total) * 100)}% (${ok}/${total})`
+                        : 'no dispatches yet';
                 }
                 
                 if (data.latency_p50) {

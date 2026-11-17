@@ -240,6 +240,24 @@ async def load_health(session: AsyncSession, gate_id: str, hours: int = 24) -> R
     return health
 
 
+async def sample_counts(session: AsyncSession, hours: int = 24) -> tuple[int, int]:
+    """``(ok, total)`` dispatch samples across all gates in the window.
+
+    The status tab needs observed evidence, not a restatement of which gates
+    are configured. Zero samples must read as zero, never as success.
+    """
+    cutoff = utcnow() - timedelta(hours=hours)
+    total = await session.scalar(
+        select(func.count()).select_from(GateSampleRow).where(GateSampleRow.at >= cutoff)
+    )
+    ok = await session.scalar(
+        select(func.count())
+        .select_from(GateSampleRow)
+        .where(GateSampleRow.at >= cutoff, GateSampleRow.ok.is_(True))
+    )
+    return int(ok or 0), int(total or 0)
+
+
 async def recent_checks(session: AsyncSession, user_id: int, limit: int = 10) -> Sequence[Check]:
     stmt = (
         select(Check).where(Check.user_id == user_id).order_by(Check.created_at.desc()).limit(limit)

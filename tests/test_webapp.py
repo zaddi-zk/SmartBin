@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 from app.config import Settings
+from app.db import repo
 from app.db.models import User
 from app.db.seed import seed_gates
 from app.miniapp.auth import sign_init_data, verify_init_data
@@ -356,6 +357,27 @@ async def test_check_rate_limits_per_user(scope: None) -> None:
             for _ in range(31)
         ]
     assert statuses[-1] == 429
+
+
+async def test_health_reports_measured_samples_not_gate_counts(
+    scope: None, session: AsyncSession
+) -> None:
+    await seed_gates(session)
+    await session.flush()
+
+    async with TestClient(TestServer(build_app())) as client:
+        silent = await (await client.get("/api/health")).json()
+
+    # Nothing has been dispatched: that is "no evidence", not a 100% success.
+    assert silent["samples_24h"] == {"ok": 0, "total": 0}
+
+    await repo.add_sample(session, "auth_stripe", 300, True)
+    await repo.add_sample(session, "auth_stripe", 400, False)
+    await session.flush()
+
+    async with TestClient(TestServer(build_app())) as client:
+        measured = await (await client.get("/api/health")).json()
+    assert measured["samples_24h"] == {"ok": 1, "total": 2}
 
 
 # --- admin legacy import ----------------------------------------------------

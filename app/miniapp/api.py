@@ -137,12 +137,15 @@ async def health(_: web.Request) -> web.Response:
         healthy = sum(1 for view in views if view.ready and view.state in ("HEALTHY", "DEGRADED"))
         ready = sum(1 for view in views if view.ready)
         latencies = [view.p50_ms for view in views if view.p50_ms]
+        ok_samples, all_samples = await repo.sample_counts(session)
     return web.json_response(
         {
             "status": "healthy" if healthy else "degraded",
             "gates": {"total": total, "healthy": healthy, "ready": ready},
             "latency_p50": min(latencies) if latencies else None,
-            "canary_24h": {"successful": healthy, "total": ready or 1},
+            # Real dispatch outcomes over the window. This used to echo the gate
+            # count, so an idle engine reported a perfect success rate.
+            "samples_24h": {"ok": ok_samples, "total": all_samples},
         }
     )
 
